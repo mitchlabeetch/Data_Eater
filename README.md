@@ -14,7 +14,6 @@ Pour Maman ❤️
   - Remove empty rows
   - Remove duplicates
   - Normalize whitespace
-  - Fix encoding issues
 - **AI-Powered Cleaning**: 
   - Intelligent text standardization
   - Extract structured data from unstructured text
@@ -137,8 +136,7 @@ Edit `config/default.json` to customize behavior:
   "cleaning": {
     "removeEmptyRows": true,               // Remove empty rows
     "removeDuplicates": true,              // Remove duplicates
-    "normalizeWhitespace": true,           // Normalize spacing
-    "fixEncoding": true                    // Fix encoding issues
+    "normalizeWhitespace": true            // Normalize spacing
   }
 }
 ```
