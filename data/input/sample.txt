@@ -1,0 +1,12 @@
+This is a   sample text   file with    inconsistent    spacing.
+
+
+It has multiple   empty lines.
+
+
+And needs    cleaning   to normalize    the whitespace.
+
+Some lines have trailing spaces.    
+Others have    tabs	and	mixed	whitespace.
+
+This text could benefit from LLM-based cleaning to improve readability and consistency.

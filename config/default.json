@@ -1,0 +1,18 @@
+{
+  "llm": {
+    "model": "llama2",
+    "host": "http://127.0.0.1:11434",
+    "temperature": 0.7,
+    "maxTokens": 2048
+  },
+  "data": {
+    "inputDir": "./data/input",
+    "outputDir": "./data/output",
+    "supportedFormats": ["csv", "json", "txt"]
+  },
+  "cleaning": {
+    "removeEmptyRows": true,
+    "removeDuplicates": true,
+    "normalizeWhitespace": true
+  }
+}
