@@ -72,19 +72,22 @@ class DataEater {
       // Apply LLM-based cleaning if requested and available
       if (options.useLLM && this.llmManager) {
         console.log('Applying LLM-based cleaning...');
+        console.log('Note: LLM processing currently processes sample data for demonstration.');
         
         try {
           // For array data, process in chunks
           if (Array.isArray(cleaned) && cleaned.length > 0) {
-            console.log('Note: LLM processing for large datasets may take time...');
             // Process first few rows as example
+            // Note: In production, you'd want to process all data in chunks
             const sample = cleaned.slice(0, Math.min(5, cleaned.length));
             const sampleText = JSON.stringify(sample, null, 2);
             const cleanedSample = await this.llmManager.cleanText(sampleText, options.context);
             
-            console.log('LLM cleaning applied to sample data');
+            console.log('LLM cleaning applied to sample data (first 5 rows)');
+            console.log('Note: Full dataset processing would require chunked processing');
           } else if (typeof cleaned === 'string') {
             cleaned = await this.llmManager.cleanText(cleaned, options.context);
+            console.log('LLM cleaning applied to text data');
           }
         } catch (error) {
           console.warn('LLM cleaning failed, continuing with basic cleaning:', error.message);

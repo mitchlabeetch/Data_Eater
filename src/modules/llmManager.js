@@ -1,6 +1,4 @@
 import { Ollama } from 'ollama';
-import fs from 'fs/promises';
-import path from 'path';
 
 /**
  * LLM Manager for handling local LLM interactions
@@ -95,6 +93,10 @@ Provide only the ${format.toUpperCase()} output without explanations.`;
    * @param {Array} rules - Array of validation rules
    */
   async validateAndFix(data, rules) {
+    if (!Array.isArray(rules)) {
+      throw new Error('Rules must be an array');
+    }
+    
     const rulesText = rules.map((rule, idx) => `${idx + 1}. ${rule}`).join('\n');
     
     const prompt = `Validate and fix the following data according to these rules:

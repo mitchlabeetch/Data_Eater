@@ -153,10 +153,10 @@ class DataCleaner {
     if (Array.isArray(data)) {
       const stats = {
         totalRows: data.length,
-        columns: data.length > 0 && typeof data[0] === 'object' 
+        columns: data.length > 0 && typeof data[0] === 'object' && data[0] !== null
           ? Object.keys(data[0]).length 
           : 0,
-        columnNames: data.length > 0 && typeof data[0] === 'object'
+        columnNames: data.length > 0 && typeof data[0] === 'object' && data[0] !== null
           ? Object.keys(data[0])
           : []
       };
