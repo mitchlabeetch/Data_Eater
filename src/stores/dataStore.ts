@@ -40,6 +40,8 @@ interface DataStore {
   searchQuery: string;
   sortConfig: { column: string; direction: 'ASC' | 'DESC' } | null;
   hasUnsavedChanges: boolean;
+  
+  duplicates: { total: number; groups: any[] } | null;
 
   // Diff State
   diffReport: {
@@ -69,6 +71,8 @@ interface DataStore {
   fetchCurrentView: () => Promise<void>;
   resetData: () => Promise<void>;
   markExported: () => void;
+  checkDuplicates: () => Promise<void>;
+  mergeDuplicates: () => Promise<void>;
 }
 
 const classifyError = (e: any): string => {
@@ -76,7 +80,7 @@ const classifyError = (e: any): string => {
   if (msg.includes("syntax error") || msg.includes("parser error")) return "DB_001";
   if (msg.includes("table") && msg.includes("not found")) return "DB_002";
   if (msg.includes("mismatch") || msg.includes("type")) return "DB_003";
-  if (msg.includes("structure") || msg.includes("colonnes")) return "LOGIC_001"; // Logic/Schema error
+  if (msg.includes("structure") || msg.includes("colonnes")) return "LOGIC_001"; 
   if (msg.includes("fetch") || msg.includes("network")) return "NET_001";
   if (msg.includes("file") || msg.includes("permission")) return "IO_001";
   return "UNKNOWN";
@@ -95,6 +99,7 @@ export const useDataStore = create<DataStore>((set, get) => ({
   searchQuery: '',
   sortConfig: null,
   hasUnsavedChanges: false,
+  duplicates: null,
 
   fetchCurrentView: async () => {
     const state = get();
@@ -104,7 +109,6 @@ export const useDataStore = create<DataStore>((set, get) => ({
       let sql = `SELECT * FROM current_dataset`;
       const clauses: string[] = [];
 
-      // 1. Search Query
       if (state.searchQuery.trim()) {
         const q = state.searchQuery.replace(/'/g, "''");
         const conditions = state.columns
@@ -113,7 +117,7 @@ export const useDataStore = create<DataStore>((set, get) => ({
         clauses.push(`(${conditions})`);
       }
 
-      // 2. Rules Engine
+      // Rules Engine
       const { rules } = useViewStore.getState();
       const activeRules = rules.filter(r => r.active && r.column).sort((a, b) => a.priority - b.priority);
       
@@ -189,8 +193,11 @@ export const useDataStore = create<DataStore>((set, get) => ({
         selectedColumn: null,
         columnStats: null,
         diffReport: null,
-        hasUnsavedChanges: false
+        hasUnsavedChanges: false,
+        duplicates: null
       });
+
+      get().checkDuplicates();
 
       mascot.setMascot(MASCOT_STATES.SLEEPING, `Prêt ! ${result.rowCount} lignes chargées.`);
     
@@ -205,29 +212,24 @@ export const useDataStore = create<DataStore>((set, get) => ({
      const mascot = useMascotStore.getState();
      const state = get();
      
-     // Reset previous diff state immediately
      set({ diffReport: null, isLoading: true });
 
-     // 1. Identical File Check (Name & Size)
      if (file.name === state.fileMeta?.name && file.size === state.fileMeta?.size) {
         mascot.setMascot(MASCOT_STATES.DETECTIVE, "Attention : Ces fichiers semblent identiques (Nom/Taille).");
      }
 
-     mascot.setMascot(MASCOT_STATES.DETECTIVE, `Comparaison avec ${file.name}...`);
      mascot.setMascot(MASCOT_STATES.DETECTIVE, `Comparaison avec ${file.name}...`);
  
      try {
        const { conn } = await initDuckDB();
        if (!conn) throw new Error("DB not ready");
  
-       // Register comparison file
        await conn.query(`DROP TABLE IF EXISTS comparison_dataset`);
        
        const fileName = await registerFile(file);
        
        await conn.query(`CREATE TABLE comparison_dataset AS SELECT * FROM read_csv_auto('${fileName}')`);
        
-       // 2. Schema Check
        const schema1 = await query(`PRAGMA table_info('current_dataset')`);
        const schema2 = await query(`PRAGMA table_info('comparison_dataset')`);
        
@@ -255,7 +257,6 @@ export const useDataStore = create<DataStore>((set, get) => ({
          return;
        }
 
-       // 3. Run Diff (Only if schema matches)
        const addedRes = await query(`SELECT * FROM comparison_dataset EXCEPT SELECT * FROM current_dataset`);
        const removedRes = await query(`SELECT * FROM current_dataset EXCEPT SELECT * FROM comparison_dataset`);
  
@@ -296,6 +297,15 @@ export const useDataStore = create<DataStore>((set, get) => ({
     }
   },
 
+  queryResult: async (sql: string) => {
+    try {
+      return await query(sql);
+    } catch (e) {
+      console.error("Raw Query Error", e);
+      return [];
+    }
+  },
+
   executeMutation: async (sql: string) => {
     const mascot = useMascotStore.getState();
     set({ isLoading: true });
@@ -310,6 +320,8 @@ export const useDataStore = create<DataStore>((set, get) => ({
       if (state.selectedColumn) {
          await state.selectColumn(state.selectedColumn);
       }
+
+      await get().checkDuplicates();
 
       set({ rows: currentRows, isLoading: false, hasUnsavedChanges: true });
       mascot.setMascot(MASCOT_STATES.SLEEPING, "Modification terminée !");
@@ -393,15 +405,6 @@ export const useDataStore = create<DataStore>((set, get) => ({
       return results;
     } catch (e) {
       useErrorStore.getState().reportError(classifyError(e), e);
-      return [];
-    }
-  },
-
-  queryResult: async (sql: string) => {
-    try {
-      return await query(sql);
-    } catch (e) {
-      console.error("Raw Query Error", e);
       return [];
     }
   },
@@ -503,7 +506,8 @@ export const useDataStore = create<DataStore>((set, get) => ({
         diffReport: null,
         searchQuery: '',
         sortConfig: null,
-        hasUnsavedChanges: false
+        hasUnsavedChanges: false,
+        duplicates: null
       });
       useMascotStore.getState().resetMascot(true);
     } catch (e) {
@@ -511,5 +515,69 @@ export const useDataStore = create<DataStore>((set, get) => ({
     }
   },
 
-  markExported: () => set({ hasUnsavedChanges: false })
+  markExported: () => set({ hasUnsavedChanges: false }),
+
+  checkDuplicates: async () => {
+    try {
+      const cols = get().columns.map(c => `"${c.name}"`).join(', ');
+      
+      const sql = `
+        SELECT count(*) as cnt
+        FROM (
+          SELECT count(*) 
+          FROM current_dataset 
+          GROUP BY ALL 
+          HAVING count(*) > 1
+        )
+      `;
+      const res = await query(sql);
+      const groupCount = Number(res[0]?.cnt || 0);
+
+      if (groupCount > 0) {
+        const detailSql = `
+          SELECT count(*) as count, ${cols}
+          FROM current_dataset 
+          GROUP BY ALL 
+          HAVING count(*) > 1
+          LIMIT 5
+        `;
+        const groups = await query(detailSql);
+        
+        const totalDupesSql = `
+          SELECT sum(cnt - 1) as wasted 
+          FROM (SELECT count(*) as cnt FROM current_dataset GROUP BY ALL HAVING count(*) > 1)
+        `;
+        const totalRes = await query(totalDupesSql);
+        const totalWasted = Number(totalRes[0]?.wasted || 0);
+
+        set({ duplicates: { total: totalWasted, groups } });
+      } else {
+        set({ duplicates: null });
+      }
+
+    } catch (e) {
+      console.error("Dupe Check Error", e);
+    }
+  },
+
+  mergeDuplicates: async () => {
+    const mascot = useMascotStore.getState();
+    set({ isLoading: true });
+    mascot.setMascot(MASCOT_STATES.EATING, "Fusion des doublons...");
+
+    try {
+      await query(`CREATE TABLE current_dataset_dedup AS SELECT DISTINCT * FROM current_dataset`);
+      await query(`DROP TABLE current_dataset`);
+      await query(`ALTER TABLE current_dataset_dedup RENAME TO current_dataset`);
+      
+      await get().fetchCurrentView();
+      await get().checkDuplicates();
+      
+      set({ isLoading: false, hasUnsavedChanges: true });
+      mascot.setMascot(MASCOT_STATES.SLEEPING, "Doublons fusionnés !");
+    } catch (e) {
+      useErrorStore.getState().reportError(classifyError(e), e);
+      set({ isLoading: false });
+    }
+  }
 }));

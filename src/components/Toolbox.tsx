@@ -4,6 +4,7 @@ import { useViewStore } from '../stores/viewStore';
 import { validateForAS400, AS400Report } from '../lib/validators/as400';
 import ReportModal from './ReportModal';
 import DiffModal from './DiffModal';
+import SmartQueryModal from './SmartQueryModal';
 import { DateTime } from 'luxon';
 import { 
   Wrench, 
@@ -16,19 +17,21 @@ import {
   CaseLower,
   Eraser,
   ArrowDownUp,
-  Sparkles
+  Sparkles,
+  Bot
 } from 'lucide-react';
 import clsx from 'clsx';
 
 const Toolbox: React.FC = () => {
   const { selectedColumn, executeMutation, fetchRows, columns } = useDataStore();
-  const { openNormalization } = useViewStore();
-  const [report, setReport] = useState<AS400Report | null>(null);
-
-  const [isReportOpen, setIsReportOpen] = useState(false);
-  const [isDiffOpen, setIsDiffOpen] = useState(false);
-
-  const handleTransform = (type: 'UPPER' | 'LOWER' | 'TRIM') => {
+    const { openNormalization } = useViewStore();
+    const [report, setReport] = useState<AS400Report | null>(null);
+    const [isReportOpen, setIsReportOpen] = useState(false);
+    const [isDiffOpen, setIsDiffOpen] = useState(false);
+    const [isSmartQueryOpen, setIsSmartQueryOpen] = useState(false);
+  
+    const handleTransform = (type: 'UPPER' | 'LOWER' | 'TRIM') => {
+  
     if (!selectedColumn) return;
     const safeCol = `"${selectedColumn}"`;
     
@@ -113,6 +116,10 @@ const Toolbox: React.FC = () => {
         isOpen={isDiffOpen}
         onClose={() => setIsDiffOpen(false)}
       />
+      <SmartQueryModal
+        isOpen={isSmartQueryOpen}
+        onClose={() => setIsSmartQueryOpen(false)}
+      />
 
       {/* Header */}
       <div className="p-4 border-b border-border-dark min-h-[64px] flex items-center gap-2 text-primary">
@@ -173,6 +180,12 @@ const Toolbox: React.FC = () => {
             label="Normalisation Avancée" 
             subtitle="Timezone, Geo, Fuzzy"
             onClick={openNormalization}
+          />
+          <ToolButton 
+            icon={<Bot size={14} />} 
+            label="Appel à un Ami" 
+            subtitle="Requête IA Sécurisée"
+            onClick={() => setIsSmartQueryOpen(true)}
           />
         </div>
 

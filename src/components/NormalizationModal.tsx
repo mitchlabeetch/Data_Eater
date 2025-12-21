@@ -5,7 +5,7 @@ import clsx from 'clsx';
 import cityTimezones from 'city-timezones';
 import { DateTime } from 'luxon';
 import fuzzysort from 'fuzzysort';
-import { batchGeocode, autocompleteAddress } from '../services/geoService';
+import { batchGeocode } from '../services/geoService';
 
 interface NormalizationModalProps {
   isOpen: boolean;
@@ -59,7 +59,7 @@ const NormalizationModal: React.FC<NormalizationModalProps> = ({ isOpen, onClose
         <div className="flex-1 overflow-y-auto bg-background-dark/30 p-8">
           {activeTab === 'timezone' && <TimezonePanel />}
           {activeTab === 'geo' && <GeoPanel />}
-          {activeTab === 'fuzzy' && <div className="text-center text-subtle italic">Module Regroupement en construction...</div>}
+          {activeTab === 'fuzzy' && <FuzzyPanel />}
         </div>
 
       </div>
@@ -106,25 +106,21 @@ const TimezonePanel: React.FC = () => {
     if (!targetCol || !geoCol) return;
     setIsProcessing(true);
 
-    // 1. Fetch ALL distinct locations
     const res = await queryResult(`SELECT DISTINCT "${geoCol}" as loc FROM current_dataset`);
     const distinctLocs = res.map((r: any) => String(r.loc || '')).filter(Boolean);
     
     const newMappings = new Map<string, string>();
     const newUnresolved: string[] = [];
 
-    // Pre-prepare city index
     const cityIndex = cityTimezones.cityMapping.map(c => ({ name: c.city, tz: c.timezone }));
 
     distinctLocs.forEach(loc => {
-      // 1. Exact Match
       let matches = cityTimezones.findFromCityStateProvince(loc);
       if (matches.length > 0) {
         newMappings.set(loc, matches[0].timezone);
         return;
       }
 
-      // 2. Fuzzy Sort
       const fuzzyResult = fuzzysort.go(loc, cityIndex, { key: 'name', limit: 1 });
       if (fuzzyResult.length > 0 && fuzzyResult[0].score > -1000) { 
          newMappings.set(loc, fuzzyResult[0].obj.tz);
@@ -149,17 +145,14 @@ const TimezonePanel: React.FC = () => {
         if (v) finalMap.set(k, v);
       });
 
-      // Prepare Columns
       const colName = overwrite ? `"${targetCol}"` : `"${targetCol}_grasse"`;
       if (!overwrite) {
          await executeMutation(`ALTER TABLE current_dataset ADD COLUMN IF NOT EXISTS ${colName} VARCHAR`);
       }
       
-      // Temp ID
       await executeMutation(`ALTER TABLE current_dataset ADD COLUMN IF NOT EXISTS _temp_id INTEGER`);
       await executeMutation(`UPDATE current_dataset SET _temp_id = rowid`);
 
-      // Batch Processing
       const BATCH_SIZE = 50000;
       const totalBatches = Math.ceil(rowCount / BATCH_SIZE);
       const grasseZone = 'Europe/Paris';
@@ -350,17 +343,13 @@ const GeoPanel: React.FC = () => {
     setProgress(0);
 
     try {
-      // 1. Fetch Distinct Values
       const res = await queryResult(`SELECT DISTINCT "${targetCol}" as loc FROM current_dataset`);
       const distinctLocs = res.map((r: any) => String(r.loc || '')).filter(Boolean);
 
-      // 2. Batch Geocode (Auto)
       const results = await batchGeocode(distinctLocs, (done, total) => {
         setProgress(Math.round((done / total) * 100));
       });
 
-      // 3. Apply Updates
-      const valuesToUpdate: string[] = [];
       const newCol = `"${targetCol}_geo"`;
       
       await executeMutation(`ALTER TABLE current_dataset ADD COLUMN IF NOT EXISTS ${newCol} VARCHAR`);
@@ -496,6 +485,152 @@ const GeoPanel: React.FC = () => {
         >
           {isProcessing ? <Clock size={18} className="animate-spin" /> : <MapPin size={18} />}
           Lancer la Consolidation
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const FuzzyPanel: React.FC = () => {
+  const { columns, selectedColumn, queryResult, executeMutation } = useDataStore();
+  const [targetCol, setTargetCol] = useState(selectedColumn || '');
+  const [clusters, setClusters] = useState<Array<{ center: string, candidates: string[] }>>([]);
+  const [merges, setMerges] = useState<Record<string, string>>({}); 
+  const [selectedClusters, setSelectedClusters] = useState<Set<string>>(new Set());
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  const handleAnalyze = async () => {
+    if (!targetCol) return;
+    setIsAnalyzing(true);
+
+    const res = await queryResult(`SELECT DISTINCT "${targetCol}" as val FROM current_dataset`);
+    const values = res.map((r: any) => String(r.val || '')).filter(Boolean);
+    
+    const tempClusters: Array<{ center: string, candidates: string[] }> = [];
+    const used = new Set<string>();
+
+    values.sort((a, b) => b.length - a.length);
+
+    values.forEach(val => {
+      if (used.has(val)) return;
+      
+      const candidates = fuzzysort.go(val, values, { threshold: -50 }).map(r => r.target).filter(c => c !== val && !used.has(c));
+      
+      if (candidates.length > 0) {
+        tempClusters.push({ center: val, candidates });
+        used.add(val);
+        candidates.forEach(c => used.add(c));
+      }
+    });
+
+    setClusters(tempClusters);
+    setIsAnalyzing(false);
+  };
+
+  const handleMerge = async () => {
+    setIsAnalyzing(true);
+    try {
+      const updates = Array.from(selectedClusters).map(center => {
+        const cluster = clusters.find(c => c.center === center);
+        const target = merges[center] || center;
+        return { target, sources: [center, ...(cluster?.candidates || [])] };
+      });
+
+      for (const update of updates) {
+        const sourcesSQL = update.sources.map(s => `'${s.replace(/'/g, "''")}'`).join(', ');
+        await executeMutation(`UPDATE current_dataset SET "${targetCol}" = '${update.target.replace(/'/g, "''")}' WHERE "${targetCol}" IN (${sourcesSQL})`);
+      }
+      
+      setIsAnalyzing(false);
+      setClusters([]); 
+    } catch (e) {
+      console.error(e);
+      setIsAnalyzing(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6 h-full flex flex-col">
+      <div className="flex gap-4 shrink-0">
+        <div className="flex-1">
+          <label className="text-xs font-bold uppercase text-subtle block mb-1">Colonne à Analyser</label>
+          <select 
+            value={targetCol}
+            onChange={(e) => setTargetCol(e.target.value)}
+            className="w-full bg-background-dark border border-border-dark rounded-lg px-3 py-2 text-sm text-white focus:border-primary focus:outline-none"
+          >
+            <option value="">-- Sélectionner --</option>
+            {columns.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+          </select>
+        </div>
+        <div className="flex items-end">
+          <button 
+            onClick={handleAnalyze}
+            disabled={!targetCol || isAnalyzing}
+            className="px-6 py-2 bg-surface-active hover:bg-border-dark text-white rounded-lg text-sm font-bold transition-colors disabled:opacity-50"
+          >
+            Rechercher Similitudes
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto space-y-4 border border-border-dark rounded-xl bg-background-dark/30 p-4 custom-scrollbar">
+        {clusters.length === 0 && !isAnalyzing && (
+          <div className="text-center text-subtle italic py-10">Aucun groupe similaire détecté.</div>
+        )}
+        
+        {clusters.map(cluster => {
+          const isSelected = selectedClusters.has(cluster.center);
+          return (
+            <div key={cluster.center} className={clsx("p-4 rounded-xl border transition-all", isSelected ? "bg-primary/5 border-primary/50" : "bg-surface-active/30 border-border-dark")}>
+              <div className="flex items-center gap-3 mb-3">
+                <input 
+                  type="checkbox" 
+                  checked={isSelected}
+                  onChange={(e) => {
+                    const newSet = new Set(selectedClusters);
+                    if (e.target.checked) newSet.add(cluster.center);
+                    else newSet.delete(cluster.center);
+                    setSelectedClusters(newSet);
+                  }}
+                  className="rounded bg-background-dark border-border-dark text-primary focus:ring-0"
+                />
+                <h4 className="text-sm font-bold text-white">Groupe "{cluster.center}"</h4>
+              </div>
+              
+              <div className="flex flex-wrap gap-2 mb-3 pl-7">
+                {[cluster.center, ...cluster.candidates].map(val => (
+                  <span key={val} className="px-2 py-1 rounded bg-background-dark border border-border-dark text-xs text-text-muted">
+                    {val}
+                  </span>
+                ))}
+              </div>
+
+              {isSelected && (
+                <div className="pl-7 flex items-center gap-2">
+                  <ArrowRight size={14} className="text-primary" />
+                  <input 
+                    type="text" 
+                    value={merges[cluster.center] || cluster.center}
+                    onChange={(e) => setMerges({ ...merges, [cluster.center]: e.target.value })}
+                    placeholder="Valeur finale..."
+                    className="flex-1 bg-background-dark border border-border-dark rounded px-3 py-1 text-xs text-white focus:border-primary focus:outline-none"
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="shrink-0 pt-4 border-t border-border-dark flex justify-end">
+        <button 
+          onClick={handleMerge}
+          disabled={selectedClusters.size === 0 || isAnalyzing}
+          className="px-8 py-3 bg-primary hover:bg-primary-dim text-background-dark rounded-xl font-bold shadow-lg transition-all flex items-center gap-2 disabled:opacity-50"
+        >
+          <GitMerge size={18} />
+          Fusionner la Sélection ({selectedClusters.size})
         </button>
       </div>
     </div>

@@ -2,14 +2,14 @@ import React from 'react';
 import Mascot from './Mascot';
 import ColumnStats from './ColumnStats';
 import { useDataStore } from '../stores/dataStore';
-import { Lock, Database, ArrowLeft, FileText, HardDrive, Hash, HelpCircle } from 'lucide-react';
+import { Lock, Database, ArrowLeft, FileText, HardDrive, Hash, HelpCircle, Copy, AlertCircle } from 'lucide-react';
 
 interface SidebarProps {
   onOpenFAQ: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ onOpenFAQ }) => {
-  const { fileMeta, rowCount, columns, selectedColumn, selectColumn } = useDataStore();
+  const { fileMeta, rowCount, columns, selectedColumn, selectColumn, duplicates, mergeDuplicates } = useDataStore();
 
   return (
     <aside className="w-72 bg-surface-dark border-r border-border-dark flex flex-col h-full shrink-0 transition-all duration-300">
@@ -83,6 +83,43 @@ const Sidebar: React.FC<SidebarProps> = ({ onOpenFAQ }) => {
                      <span className="text-lg font-mono font-bold text-primary">{columns.length}</span>
                    </div>
                  </div>
+
+                 {/* Duplicates Section */}
+                 {duplicates && (
+                   <div className="pt-4 border-t border-border-dark space-y-3 animate-in slide-in-from-left-2">
+                     <div className="flex items-center gap-2 text-white">
+                       <Copy size={14} className="text-yellow-500" />
+                       <h4 className="text-xs font-bold uppercase tracking-wider">Doublons Détectés</h4>
+                     </div>
+                     
+                     <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3">
+                       <div className="flex justify-between items-end mb-2">
+                         <span className="text-xs text-yellow-500 font-medium">Lignes en trop</span>
+                         <span className="text-xl font-black text-white">{duplicates.total}</span>
+                       </div>
+                       
+                       <div className="space-y-1">
+                         {duplicates.groups.map((g: any, idx: number) => (
+                           <div key={idx} className="flex justify-between text-[10px] text-text-muted">
+                             <span>Groupe #{idx + 1}</span>
+                             <span className="font-mono bg-background-dark px-1.5 rounded">{g.count} copies</span>
+                           </div>
+                         ))}
+                         {duplicates.groups.length === 5 && (
+                           <div className="text-[10px] text-subtle italic text-center pt-1">...et autres</div>
+                         )}
+                       </div>
+                     </div>
+
+                     <button 
+                       onClick={mergeDuplicates}
+                       className="w-full py-2 bg-yellow-500 hover:bg-yellow-400 text-background-dark rounded-lg text-xs font-bold uppercase tracking-wider shadow-lg transition-all flex items-center justify-center gap-2"
+                     >
+                       <AlertCircle size={14} />
+                       Rassembler les entrées
+                     </button>
+                   </div>
+                 )}
                </>
             ) : (
               // Empty State

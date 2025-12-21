@@ -1,8 +1,4 @@
-import { create } from 'zustand';
-
 const API_BASE = 'https://data.geopf.fr/geocodage';
-const SEARCH_LIMIT = 40; // Conservative limit (below 50/s)
-const COMPLETION_LIMIT = 8; // Conservative limit (below 10/s)
 
 interface CacheEntry {
   query: string;
