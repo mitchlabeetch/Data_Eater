@@ -491,7 +491,10 @@ const GeoPanel: React.FC = () => {
   );
 };
 
-// Fuzzy matching configuration constants
+// Fuzzy matching configuration constants for similarity detection
+// FUZZY_THRESHOLD_BASE: The strictest threshold score (-200 means very similar matches only)
+// FUZZY_THRESHOLD_MULTIPLIER: Scales threshold by string length (5 * length allows longer strings more flexibility)
+// SIMILARITY_SCORE_THRESHOLD: Normalized similarity cutoff (-15 balances precision vs. recall)
 const FUZZY_THRESHOLD_BASE = -200;
 const FUZZY_THRESHOLD_MULTIPLIER = 5;
 const SIMILARITY_SCORE_THRESHOLD = -15;
@@ -530,8 +533,7 @@ const FuzzyPanel: React.FC = () => {
           const c = result.target;
           if (c === val || used.has(c)) return false;
           // Additional heuristic: check normalized score ratio
-          // Guard against division by zero with || 1
-          const similarity = result.score / (Math.max(val.length, c.length) || 1);
+          const similarity = result.score / Math.max(val.length, c.length);
           return similarity > SIMILARITY_SCORE_THRESHOLD; // More refined similarity threshold
         })
         .map(result => result.target);
