@@ -34,6 +34,9 @@ jobs:
 
   build-macos:
     runs-on: macos-latest
+    strategy:
+      matrix:
+        target: [aarch64-apple-darwin, x86_64-apple-darwin]
     steps:
       - uses: actions/checkout@v4
       - name: Setup Node.js
@@ -42,24 +45,22 @@ jobs:
           node-version: 20
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
       - name: Install Dependencies
         run: npm install
-      - name: Build Data Eater (macOS Universal)
-        # Tauri builds universal binaries by default on macOS if configured, or we can target specific archs.
-        # For simplicity in this workflow, we build for the runner's arch (likely M1/M2) and could add a matrix strategy for Intel.
-        # But 'tauri build --target universal-apple-darwin' is the modern way if supported. 
-        # Standard build:
-        run: npm run tauri build
+      - name: Build Data Eater (macOS ${{ matrix.target }})
+        run: npm run tauri build -- --target ${{ matrix.target }}
       - name: Upload DMG
         uses: actions/upload-artifact@v4
         with:
-          name: macOS DMG
-          path: src-tauri/target/release/bundle/dmg/*.dmg
+          name: macOS DMG ${{ matrix.target }}
+          path: src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
       - name: Upload App
         uses: actions/upload-artifact@v4
         with:
-          name: macOS App
-          path: src-tauri/target/release/bundle/macos/*.app
+          name: macOS App ${{ matrix.target }}
+          path: src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app
 
   build-linux:
     runs-on: ubuntu-latest
@@ -74,7 +75,7 @@ jobs:
       - name: Install Dependencies (System)
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.0-dev build-essential curl wget libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libjavascriptcoregtk-4.1-dev libsoup-3.0-dev
       - name: Install Node Dependencies
         run: npm install
       - name: Build Data Eater (Linux)

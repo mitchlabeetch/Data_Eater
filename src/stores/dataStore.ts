@@ -521,6 +521,7 @@ export const useDataStore = create<DataStore>((set, get) => ({
     try {
       const cols = get().columns.map(c => `"${c.name}"`).join(', ');
       
+      // Check for exact duplicates
       const sql = `
         SELECT count(*) as cnt
         FROM (
@@ -539,6 +540,7 @@ export const useDataStore = create<DataStore>((set, get) => ({
           FROM current_dataset 
           GROUP BY ALL 
           HAVING count(*) > 1
+          ORDER BY count(*) DESC
           LIMIT 5
         `;
         const groups = await query(detailSql);

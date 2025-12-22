@@ -491,6 +491,14 @@ const GeoPanel: React.FC = () => {
   );
 };
 
+// Fuzzy matching configuration constants for similarity detection
+// FUZZY_THRESHOLD_BASE: The strictest threshold score (-200 means very similar matches only)
+// FUZZY_THRESHOLD_MULTIPLIER: Scales threshold by string length (5 * length allows longer strings more flexibility)
+// SIMILARITY_SCORE_THRESHOLD: Normalized similarity cutoff (-15 balances precision vs. recall)
+const FUZZY_THRESHOLD_BASE = -200;
+const FUZZY_THRESHOLD_MULTIPLIER = 5;
+const SIMILARITY_SCORE_THRESHOLD = -15;
+
 const FuzzyPanel: React.FC = () => {
   const { columns, selectedColumn, queryResult, executeMutation } = useDataStore();
   const [targetCol, setTargetCol] = useState(selectedColumn || '');
@@ -509,12 +517,26 @@ const FuzzyPanel: React.FC = () => {
     const tempClusters: Array<{ center: string, candidates: string[] }> = [];
     const used = new Set<string>();
 
+    // Sort by length descending to use longer strings as cluster centers
     values.sort((a, b) => b.length - a.length);
 
     values.forEach(val => {
       if (used.has(val)) return;
       
-      const candidates = fuzzysort.go(val, values, { threshold: -50 }).map(r => r.target).filter(c => c !== val && !used.has(c));
+      // Improved fuzzy matching with better threshold based on string length
+      // Shorter strings need stricter matching, longer strings can be more lenient
+      const dynamicThreshold = Math.max(FUZZY_THRESHOLD_BASE, -val.length * FUZZY_THRESHOLD_MULTIPLIER);
+      const fuzzyResults = fuzzysort.go(val, values, { threshold: dynamicThreshold });
+      
+      const candidates = fuzzyResults
+        .filter(result => {
+          const c = result.target;
+          if (c === val || used.has(c)) return false;
+          // Additional heuristic: check normalized score ratio
+          const similarity = result.score / Math.max(val.length, c.length);
+          return similarity > SIMILARITY_SCORE_THRESHOLD; // More refined similarity threshold
+        })
+        .map(result => result.target);
       
       if (candidates.length > 0) {
         tempClusters.push({ center: val, candidates });

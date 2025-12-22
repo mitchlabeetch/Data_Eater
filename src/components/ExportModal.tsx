@@ -179,7 +179,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => {
             disabled={isExporting}
             className="px-6 py-2 bg-primary hover:bg-primary-dim text-background-dark rounded-lg text-sm font-bold shadow-[0_0_15px_rgba(57,255,20,0.3)] transition-all flex items-center gap-2"
           >
-            {isExporting ? 'Export...' : (
+            {isExporting ? 'Exportation...' : (
               <>
                 <Save size={16} />
                 Sauvegarder

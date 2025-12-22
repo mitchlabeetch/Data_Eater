@@ -75,7 +75,7 @@ function App() {
           </div>
           <div>
             <h1 className="text-lg font-black tracking-tight flex items-center gap-2">
-              DATA EATER <span className="text-[10px] font-normal text-text-muted border border-border-dark px-2 py-0.5 rounded-full">v1.4</span>
+              DATA EATER <span className="text-[10px] font-normal text-text-muted border border-border-dark px-2 py-0.5 rounded-full">v1.2</span>
             </h1>
           </div>
           
@@ -215,13 +215,14 @@ function App() {
                         return (
                           <th 
                             key={col.name} 
+                            onClick={() => selectColumn(isSelected ? null : col.name)}
                             className={clsx(
                               "p-3 border-b border-border-dark font-semibold tracking-wider whitespace-nowrap cursor-pointer transition-colors group select-none",
                               isSelected ? "bg-primary/20 text-white border-b-primary" : "bg-surface-active hover:bg-surface-dark hover:text-white"
                             )}
                           >
                             <div className="flex items-center gap-2">
-                              <span onClick={() => selectColumn(isSelected ? null : col.name)}>{col.name}</span>
+                              <span>{col.name}</span>
                               <span className={clsx("text-[10px] px-1 rounded transition-colors", isSelected ? "bg-primary text-background-dark" : "bg-background-dark text-subtle")}>
                                 {col.type}
                               </span>
