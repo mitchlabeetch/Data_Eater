@@ -499,6 +499,11 @@ const FuzzyPanel: React.FC = () => {
   const [selectedClusters, setSelectedClusters] = useState<Set<string>>(new Set());
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
+  // Fuzzy matching configuration
+  const FUZZY_THRESHOLD_BASE = -200;
+  const FUZZY_THRESHOLD_MULTIPLIER = 5;
+  const SIMILARITY_SCORE_THRESHOLD = -15;
+
   const handleAnalyze = async () => {
     if (!targetCol) return;
     setIsAnalyzing(true);
@@ -517,7 +522,7 @@ const FuzzyPanel: React.FC = () => {
       
       // Improved fuzzy matching with better threshold based on string length
       // Shorter strings need stricter matching, longer strings can be more lenient
-      const dynamicThreshold = Math.max(-200, -val.length * 5);
+      const dynamicThreshold = Math.max(FUZZY_THRESHOLD_BASE, -val.length * FUZZY_THRESHOLD_MULTIPLIER);
       const fuzzyResults = fuzzysort.go(val, values, { threshold: dynamicThreshold });
       
       const candidates = fuzzyResults
@@ -526,7 +531,7 @@ const FuzzyPanel: React.FC = () => {
           if (c === val || used.has(c)) return false;
           // Additional heuristic: check normalized score ratio
           const similarity = result.score / Math.max(val.length, c.length);
-          return similarity > -15; // More refined similarity threshold
+          return similarity > SIMILARITY_SCORE_THRESHOLD; // More refined similarity threshold
         })
         .map(result => result.target);
       
