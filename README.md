@@ -43,6 +43,7 @@ This application runs entirely on your local machine, ensuring complete data pri
 ### 🎁 Built as a Present
 
 Data Eater was originally created as a gift for data professionals, with an initial focus on a specific company's workflow. Feel free to fork, adapt, and customize it for your own use case!
+⚠️ The current code base contains client-side text hardcoded in French - I'm working on a branding-less and i18n-compliant version. Any help is welcome!
 
 ---
 
