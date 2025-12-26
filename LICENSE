@@ -12,22 +12,26 @@ furnished to do so, subject to the following conditions:
 The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
 
-BRANDING AND ATTRIBUTION REQUIREMENT:
-Before distributing, sharing, or publicly deploying this software or any
-derivative works, you MUST remove or replace ALL branded content, including
-but not limited to:
+IMPORTANT NOTICE REGARDING BRANDED CONTENT:
+This software was originally created as a personalized gift and contains
+branded content specific to the original recipient, including:
   - Company names (e.g., "Robertet")
   - Location-specific references (e.g., "Grasse")  
   - Personal names mentioned in the codebase or UI
   - Company-specific terminology and branded assets
-  - Any other identifying information specific to the original intended recipient
+  - Other identifying information specific to the original intended recipient
 
-This requirement exists because the software was originally created as a
-personalized gift with specific branding. While the code is open source, the
-branding and company-specific content are not intended for redistribution.
+While this software is provided under the MIT License and you are legally free
+to use, modify, and distribute it, we STRONGLY RECOMMEND and REQUEST that you
+remove or replace all such branded content before distributing, sharing, or
+publicly deploying this software or any derivative works.
 
-You are free to rebrand the software for your own organization or use case.
-See CUSTOMIZATION.md for guidance on customization.
+The branded content is not intended for redistribution and its removal respects
+the personal nature of the original gift while allowing the code to be freely
+shared and adapted.
+
+You are encouraged to rebrand the software for your own organization or use case.
+See CUSTOMIZATION.md for detailed guidance on customization.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,

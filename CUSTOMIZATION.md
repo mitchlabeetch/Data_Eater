@@ -32,7 +32,7 @@ While you're **free to use** this software, you **must adapt** these references 
 
 ### Primary Brand: "Robertet"
 
-Files containing "Robertet" references:
+Files containing "Robertet" references (line numbers are approximate and may change as code evolves):
 
 | File | Line(s) | Content |
 |------|---------|---------|
@@ -51,7 +51,7 @@ Files containing "Robertet" references:
 
 ### Location: "Grasse"
 
-Files containing "Grasse" references:
+Files containing "Grasse" references (line numbers are approximate and may change as code evolves):
 
 | File | Line(s) | Content |
 |------|---------|---------|

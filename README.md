@@ -390,7 +390,9 @@ This project is licensed under the **MIT License** - see the [LICENSE](./LICENSE
 ❌ **Required Before Distribution:**
 - **Remove all branded content** (company names, specific terminology, branded assets)
 - **Remove or replace personal references**
-- You may not distribute this software with the original branding intact
+
+⚠️ **Important:**
+While the MIT License permits distribution with branding, we strongly request that you remove company-specific and personal content before sharing, out of respect for the gift's personal nature.
 
 🎯 **Why?**
 This app was built as a personal gift with specific branding. While the code is open source, the branding and company-specific content are not intended for redistribution. Please customize it for your own use!
