@@ -36,7 +36,7 @@ import { useDropzone } from 'react-dropzone';
 import { Upload, Search, Filter, Save, FileOutput, Shield, Loader2, LogOut, Terminal, Map as MapIcon, LayoutGrid, Zap } from "lucide-react";
 import clsx from "clsx";
 import "@glideapps/glide-data-grid/dist/index.css";
-import { DataEditor, GridCell, GridCellKind, GridColumn, Item, Theme } from "@glideapps/glide-data-grid";
+import { DataEditor, GridCell, GridCellKind, GridColumn, Item, Theme, GridSelection, CompactSelection } from "@glideapps/glide-data-grid";
 
 function App() {
   const { 
@@ -47,9 +47,11 @@ function App() {
     columns, 
     rowCount, 
     fileMeta, 
-        isLoading,
-        selectedColumn,
-        searchQuery,    setSearchQuery,
+    isLoading, 
+    selectedColumn, 
+    selectColumn,
+    searchQuery,
+    setSearchQuery,
     setSort,
     hasUnsavedChanges,
     resetData,
@@ -58,6 +60,7 @@ function App() {
   const { openFilter, isNormalizationOpen, closeNormalization } = useViewStore();
   const { setMascot, resetMascot } = useMascotStore();
 
+  const [gridSelection, setGridSelection] = useState<GridSelection | null>(null);
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isFAQOpen, setIsFAQOpen] = useState(false);
   const [isHealthOpen, setIsHealthOpen] = useState(false);
@@ -118,6 +121,22 @@ function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [initializeEngine, restoreSession, setMascot, resetMascot]);
+
+  // Sync external column selection to grid selection
+  useEffect(() => {
+    if (selectedColumn) {
+      const colIndex = columns.findIndex(c => c.name === selectedColumn);
+      if (colIndex >= 0) {
+        setGridSelection({
+          columns:CompactSelection.empty().add(colIndex),
+          rows: CompactSelection.empty(),
+          current: undefined
+        });
+      }
+    } else {
+        setGridSelection(null);
+    }
+  }, [selectedColumn, columns]);
 
   const handleQuit = async () => {
     if (hasUnsavedChanges) {
@@ -383,12 +402,21 @@ function App() {
                   onHeaderClicked={(col) => {
                     const c = gridColumns[col];
                     if (c) {
+                      selectColumn(c.title);
                       setSort(c.title);
                     }
                   }}
                   rowMarkers="number"
-                  gridSelection={undefined}
-                  onGridSelectionChange={() => {}}
+                  gridSelection={gridSelection || undefined}
+                  onGridSelectionChange={(newSelection) => {
+                    setGridSelection(newSelection);
+                    if (newSelection?.columns.toArray().length > 0) {
+                        const colIndex = newSelection.columns.first();
+                        if (colIndex !== undefined && columns[colIndex]) {
+                            selectColumn(columns[colIndex].name);
+                        }
+                    }
+                  }}
                   smoothScrollX
                   smoothScrollY
                   verticalBorder={false}
@@ -411,8 +439,8 @@ function App() {
           </footer>
         </main>
         <Toolbox 
-          onOpenSplit={() => openModal(setIsSplitOpen, "Configuration de la découpe...")} 
-          onOpenJoin={() => openModal(setIsJoinOpen, "Préparation de la jointure...")} 
+          onOpenSplit={() => openModal(setIsSplitOpen, "Configuration de la découpe...")}
+          onOpenJoin={() => openModal(setIsJoinOpen, "Préparation de la jointure...")}
           onOpenUnpivot={() => openModal(setIsUnpivotOpen, "Analyse de la structure...")}
           onOpenRegex={() => openModal(setIsRegexOpen, "Chargement du moteur Regex...")}
           onOpenFormula={() => openModal(setIsFormulaOpen, "Calculatrice prête !")}
