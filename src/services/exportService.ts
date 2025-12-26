@@ -10,7 +10,7 @@ if (typeof window !== 'undefined') {
 
 export interface ExportOptions {
   filename: string;
-  format: 'csv' | 'xlsx' | 'json' | 'parquet';
+  format: 'csv' | 'xlsx' | 'json' | 'parquet' | 'pbip_theme';
   encoding: 'utf-8' | 'windows-1252';
   delimiter: ',' | ';' | '\t';
   includeHeaders: boolean;
@@ -57,6 +57,12 @@ export const PRESETS: Record<string, ExportOptions> = {
 
 export const generateExport = async (rows: any[], columns: { name: string }[], options: ExportOptions) => {
   const { filename, format, encoding, delimiter, includeHeaders } = options;
+  
+  if (format === 'pbip_theme') {
+    exportPowerBITheme(`${filename}.json`);
+    return;
+  }
+
   const fullFilename = `${filename}.${format}`;
 
   if (format === 'xlsx') {
@@ -79,6 +85,33 @@ const triggerDownload = (blob: Blob, filename: string) => {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+};
+
+const exportPowerBITheme = (filename: string) => {
+  const theme = {
+    "name": "Data Eater Neon",
+    "dataColors": ["#13ec5b", "#0fa640", "#9db9a6", "#55695e", "#28392e", "#1c2a21"],
+    "background": "#FFFFFF",
+    "foreground": "#1a1a1a",
+    "tableAccent": "#13ec5b",
+    "visualStyles": {
+        "*": {
+            "*": {
+                "background": [{ "show": true, "color": { "solid": { "color": "#1a1a1a" } } }],
+                "visualHeader": [
+                    {
+                        "background": { "solid": { "color": "#1a1a1a" } },
+                        "foreground": { "solid": { "color": "#ffffff" } }
+                    }
+                ],
+                "outspace": [{ "color": { "solid": { "color": "#1a1a1a" } } }]
+            }
+        }
+    }
+  };
+  const jsonStr = JSON.stringify(theme, null, 2);
+  const blob = new Blob([jsonStr], { type: 'application/json' });
+  triggerDownload(blob, filename);
 };
 
 const exportParquet = async (filename: string) => {

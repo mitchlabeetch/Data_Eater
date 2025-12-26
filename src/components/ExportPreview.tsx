@@ -39,6 +39,12 @@ export const ExportPreview: React.FC<ExportPreviewProps> = ({ options }) => {
       });
     } else if (options.format === 'json') {
       text = JSON.stringify(sampleRows, null, 2);
+    } else if (options.format === 'pbip_theme') {
+      text = JSON.stringify({
+        "name": "Data Eater Neon",
+        "dataColors": ["#13ec5b", "#0fa640", "#9db9a6", "..."],
+        "visualStyles": { "*": { "*": { "background": [{ "color": { "solid": { "color": "#1a1a1a" } } }] } } }
+      }, null, 2);
     } else if (options.format === 'xlsx') {
       text = "[Aperçu binaire indisponible pour Excel]\nStructure: " + columns.length + " colonnes, 5 premières lignes simulées.";
     }

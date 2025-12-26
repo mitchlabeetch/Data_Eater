@@ -124,6 +124,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => {
                 <option value="xlsx">Excel (XLSX)</option>
                 <option value="json">JSON (Web)</option>
                 <option value="parquet">Parquet (PowerBI)</option>
+                <option value="pbip_theme">Thème PowerBI (.json)</option>
               </select>
             </div>
             

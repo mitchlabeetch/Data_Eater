@@ -2,11 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { 
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer, 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, 
-  LineChart, Line, ComposedChart, Scatter
+  LineChart, Line, ComposedChart, Scatter, ScatterChart
 } from 'recharts';
 import { useDataStore } from '../stores/dataStore';
 import { query } from '../services/duckdb';
-import { BarChart3, PieChart as PieIcon, LineChart as LineIcon, Target, Activity } from 'lucide-react';
+import { BarChart3, PieChart as PieIcon, LineChart as LineIcon, Target, Activity, Cloud, CalendarClock, AlertTriangle } from 'lucide-react';
 import clsx from 'clsx';
 
 interface DataVizModalProps {
@@ -19,7 +19,7 @@ const COLORS = ['#13ec5b', '#0fa640', '#9db9a6', '#55695e', '#28392e', '#1c2a21'
 export const DataVizModal: React.FC<DataVizModalProps> = ({ isOpen, onClose }) => {
   const { selectedColumn, columnStats, columns } = useDataStore();
   const [vizData, setVizData] = useState<any[]>([]);
-  const [vizType, setVizType] = useState<'AUTO' | 'PIE' | 'BAR' | 'LINE' | 'BULLET' | 'HISTOGRAM'>('AUTO');
+  const [vizType, setVizType] = useState<'AUTO' | 'PIE' | 'BAR' | 'LINE' | 'BULLET' | 'HISTOGRAM' | 'WORD_CLOUD' | 'TIMELINE' | 'OUTLIERS'>('AUTO');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -35,16 +35,16 @@ export const DataVizModal: React.FC<DataVizModalProps> = ({ isOpen, onClose }) =
     const colDef = columns.find(c => c.name === selectedColumn);
     const type = colDef?.type.toUpperCase() || '';
     const isNumeric = type.includes('INT') || type.includes('DOUBLE') || type.includes('DECIMAL');
+    const isDate = type.includes('DATE') || type.includes('TIMESTAMP');
 
     try {
       if (vizType === 'HISTOGRAM' && isNumeric) {
-        // Calculate dynamic bin size
         const statsSql = `SELECT MIN("${selectedColumn}") as min_val, MAX("${selectedColumn}") as max_val FROM current_dataset`;
         const stats = await query(statsSql);
         const min = Number(stats[0].min_val);
         const max = Number(stats[0].max_val);
         const range = max - min;
-        const binSize = range / 20; // 20 bins
+        const binSize = range / 20 || 1;
 
         const sql = `
           SELECT 
@@ -57,8 +57,54 @@ export const DataVizModal: React.FC<DataVizModalProps> = ({ isOpen, onClose }) =
         `;
         const res = await query(sql);
         setVizData(res.map(r => ({ name: Number(r.bin).toFixed(2), value: r.count })));
-      } else if (type.includes('DATE') || type.includes('TIMESTAMP')) {
+      } else if (vizType === 'OUTLIERS' && isNumeric) {
+        // Z-Score calculation
         const sql = `
+          WITH stats AS (
+            SELECT AVG("${selectedColumn}") as mean, STDDEV("${selectedColumn}") as sd FROM current_dataset
+          )
+          SELECT 
+            "${selectedColumn}" as val,
+            ("${selectedColumn}" - mean) / NULLIF(sd, 0) as z_score
+          FROM current_dataset, stats
+          WHERE "${selectedColumn}" IS NOT NULL
+          ORDER BY ABS(z_score) DESC
+          LIMIT 200
+        `;
+        const res = await query(sql);
+        setVizData(res.map((r, i) => ({ x: i, y: r.val, z: r.z_score, isOutlier: Math.abs(r.z_score) > 2 })));
+      } else if ((vizType === 'TIMELINE' || isDate) && (vizType !== 'AUTO')) {
+        const sql = `
+          SELECT "${selectedColumn}"::TIMESTAMP as ts
+          FROM current_dataset 
+          WHERE "${selectedColumn}" IS NOT NULL 
+          ORDER BY ts ASC 
+          LIMIT 500
+        `;
+        const res = await query(sql);
+        // Map to scatter plot: X = Date, Y = Time of day (hours)
+        setVizData(res.map(r => {
+          const d = new Date(r.ts);
+          return { 
+            x: d.getTime(), 
+            y: d.getHours() + d.getMinutes()/60,
+            date: d.toLocaleDateString(),
+            time: d.toLocaleTimeString() 
+          };
+        }));
+      } else if (vizType === 'WORD_CLOUD') {
+        const sql = `
+          SELECT "${selectedColumn}" as text, COUNT(*) as count 
+          FROM current_dataset 
+          WHERE "${selectedColumn}" IS NOT NULL AND "${selectedColumn}" != ''
+          GROUP BY text 
+          ORDER BY count DESC 
+          LIMIT 50
+        `;
+        const res = await query(sql);
+        setVizData(res.map(r => ({ text: String(r.text), value: Number(r.count) })));
+      } else if (isDate) { // Fallback for auto date
+         const sql = `
           SELECT "${selectedColumn}"::DATE as date, COUNT(*) as count 
           FROM current_dataset 
           WHERE "${selectedColumn}" IS NOT NULL 
@@ -87,7 +133,30 @@ export const DataVizModal: React.FC<DataVizModalProps> = ({ isOpen, onClose }) =
 
   if (!isOpen || !selectedColumn || !columnStats) return null;
 
-  const isNumeric = columns.find(c => c.name === selectedColumn)?.type.match(/INT|DOUBLE|DECIMAL/i);
+  const colType = columns.find(c => c.name === selectedColumn)?.type.toUpperCase() || '';
+  const isNumeric = colType.match(/INT|DOUBLE|DECIMAL/i);
+  const isDate = colType.match(/DATE|TIMESTAMP/i);
+
+  const renderWordCloud = () => {
+    const maxVal = Math.max(...vizData.map(d => d.value));
+    return (
+      <div className="flex flex-wrap gap-2 content-center justify-center p-4 overflow-y-auto h-full">
+        {vizData.map((item, i) => (
+          <span 
+            key={i} 
+            className="text-primary hover:text-white transition-colors cursor-default"
+            style={{ 
+              fontSize: `${Math.max(10, (item.value / maxVal) * 40)}px`,
+              opacity: 0.5 + (item.value / maxVal) * 0.5
+            }}
+            title={`${item.text}: ${item.value}`}
+          >
+            {item.text}
+          </span>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
@@ -107,8 +176,15 @@ export const DataVizModal: React.FC<DataVizModalProps> = ({ isOpen, onClose }) =
              <button onClick={() => setVizType('LINE')} className={clsx("p-1.5 rounded transition-colors", vizType === 'LINE' ? "bg-primary text-black" : "text-text-muted hover:text-white")} title="Lignes"><LineIcon size={16} /></button>
              <button onClick={() => setVizType('PIE')} className={clsx("p-1.5 rounded transition-colors", vizType === 'PIE' ? "bg-primary text-black" : "text-text-muted hover:text-white")} title="Camembert"><PieIcon size={16} /></button>
              <button onClick={() => setVizType('BULLET')} className={clsx("p-1.5 rounded transition-colors", vizType === 'BULLET' ? "bg-primary text-black" : "text-text-muted hover:text-white")} title="Bullet (Cible)"><Target size={16} /></button>
+             <button onClick={() => setVizType('WORD_CLOUD')} className={clsx("p-1.5 rounded transition-colors", vizType === 'WORD_CLOUD' ? "bg-primary text-black" : "text-text-muted hover:text-white")} title="Nuage de Mots"><Cloud size={16} /></button>
              {isNumeric && (
-               <button onClick={() => setVizType('HISTOGRAM')} className={clsx("p-1.5 rounded transition-colors", vizType === 'HISTOGRAM' ? "bg-primary text-black" : "text-text-muted hover:text-white")} title="Histogramme (Distribution)"><Activity size={16} /></button>
+               <>
+                 <button onClick={() => setVizType('HISTOGRAM')} className={clsx("p-1.5 rounded transition-colors", vizType === 'HISTOGRAM' ? "bg-primary text-black" : "text-text-muted hover:text-white")} title="Histogramme"><Activity size={16} /></button>
+                 <button onClick={() => setVizType('OUTLIERS')} className={clsx("p-1.5 rounded transition-colors", vizType === 'OUTLIERS' ? "bg-primary text-black" : "text-text-muted hover:text-white")} title="Outliers (Z-Score)"><AlertTriangle size={16} /></button>
+               </>
+             )}
+             {isDate && (
+               <button onClick={() => setVizType('TIMELINE')} className={clsx("p-1.5 rounded transition-colors", vizType === 'TIMELINE' ? "bg-primary text-black" : "text-text-muted hover:text-white")} title="Timeline"><CalendarClock size={16} /></button>
              )}
           </div>
           <button onClick={onClose} className="p-2 hover:bg-surface-active rounded-lg transition-colors text-text-muted hover:text-white">
@@ -123,7 +199,25 @@ export const DataVizModal: React.FC<DataVizModalProps> = ({ isOpen, onClose }) =
             </div>
           )}
           <ResponsiveContainer width="100%" height="100%">
-            {vizType === 'LINE' ? (
+            {vizType === 'WORD_CLOUD' ? renderWordCloud() :
+             vizType === 'TIMELINE' ? (
+               <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#28392e" />
+                  <XAxis type="number" dataKey="x" name="Date" domain={['auto', 'auto']} tickFormatter={(unix) => new Date(unix).toLocaleDateString()} stroke="#55695e" fontSize={10} />
+                  <YAxis type="number" dataKey="y" name="Heure" unit="h" stroke="#55695e" fontSize={10} domain={[0, 24]} />
+                  <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ backgroundColor: '#1c2a21', borderColor: '#28392e', color: '#fff' }} labelFormatter={(x) => new Date(x).toLocaleDateString()} />
+                  <Scatter name="Événements" data={vizData} fill="#13ec5b" />
+               </ScatterChart>
+             ) : vizType === 'OUTLIERS' ? (
+               <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#28392e" />
+                  <XAxis type="number" dataKey="x" name="Index" stroke="#55695e" fontSize={10} />
+                  <YAxis type="number" dataKey="y" name="Valeur" stroke="#55695e" fontSize={10} />
+                  <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ backgroundColor: '#1c2a21', borderColor: '#28392e', color: '#fff' }} />
+                  <Scatter name="Normal" data={vizData.filter(d => !d.isOutlier)} fill="#55695e" shape="circle" />
+                  <Scatter name="Outliers" data={vizData.filter(d => d.isOutlier)} fill="#ef4444" shape="cross" />
+               </ScatterChart>
+             ) : vizType === 'LINE' ? (
               <LineChart data={vizData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#28392e" vertical={false} />
                 <XAxis dataKey="name" stroke="#55695e" fontSize={10} />
@@ -171,7 +265,7 @@ export const DataVizModal: React.FC<DataVizModalProps> = ({ isOpen, onClose }) =
 
         <div className="p-4 border-t border-surface-active bg-surface-dark flex justify-between items-center text-xs text-text-muted">
            <div className="flex gap-4">
-             <div className="flex items-center gap-2"><div className="size-2 rounded-full bg-primary" /><span>Échantillon: Top 100</span></div>
+             <div className="flex items-center gap-2"><div className="size-2 rounded-full bg-primary" /><span>Échantillon: Top {vizType === 'OUTLIERS' || vizType === 'TIMELINE' ? '200-500' : '100'}</span></div>
              <div>Type: <span className="text-white font-mono">{vizType}</span></div>
            </div>
            <div className="text-text-subtle italic">Appuyez sur ESC pour fermer</div>
