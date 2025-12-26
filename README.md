@@ -1,3 +1,5 @@
+⚠️ **Important note** - The app is still under development (critical issues & UI being translated from FR to EN - I don't recommend using the executables yet)! ⚠️
+
 # 🍴 Data Eater
 
 <div align="center">
@@ -32,18 +34,18 @@
 
 ## 🎯 About
 
-**Data Eater** (Le Glouton) is a desktop application designed to make data cleaning, validation, and transformation a breeze. Originally built as a thoughtful present for data professionals working with legacy systems, it specializes in:
+**Data Eater** (Le Glouton) is a desktop application designed to make data cleaning, validation, and transformation a breeze. Originally built as a thoughtful present for a data professional working with legacy systems named 'Mom', it specializes in:
 
 - **CSV/Excel Processing**: Handle large datasets with ease
 - **AS400/IBM iSeries Compatibility**: Prepare data for mainframe systems with proper encoding (Windows-1252) and format validation
 - **Power BI Ready**: Export clean, structured data perfect for business intelligence tools
 - **Zero Data Loss**: Your source files are never modified - all operations work on in-memory copies
 
-This application runs entirely on your local machine, ensuring complete data privacy and security. No cloud uploads, no external dependencies for core functionality.
+This application runs entirely on your local machine, ensuring complete data privacy and security. No cloud uploads, no external dependencies for core functionality. (Doesn't apply to deployments manually made as web-apps or toggling of LLM-based assistance features)!
 
 ### 🎁 Built as a Present
 
-Data Eater was originally created as a gift for data professionals, with an initial focus on a specific company's workflow. Feel free to fork, adapt, and customize it for your own use case!
+Data Eater was originally created as a gift for a data professional, with an initial focus on a specific company's workflow. Feel free to fork, adapt, and customize it for your own use case!
 
 ⚠️ The current code base contains client-side text hardcoded in French - I'm working on a branding-less and i18n-compliant version. Any help is welcome!
 
@@ -297,7 +299,7 @@ npm run preview
 
 ### Desktop Application
 
-Build production-ready installers for your platform:
+Build (soon) production-ready installers for your platform:
 
 ```bash
 # Build for your current platform
