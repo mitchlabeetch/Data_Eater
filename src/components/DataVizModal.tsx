@@ -2,11 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { 
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer, 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, 
-  LineChart, Line, ComposedChart, Scatter, ScatterChart
+  LineChart, Line, ComposedChart, Scatter, ScatterChart, Legend
 } from 'recharts';
 import { useDataStore } from '../stores/dataStore';
 import { query } from '../services/duckdb';
-import { BarChart3, PieChart as PieIcon, LineChart as LineIcon, Target, Activity, Cloud, CalendarClock, AlertTriangle } from 'lucide-react';
+import { BarChart3, PieChart as PieIcon, LineChart as LineIcon, Target, Activity, Cloud, CalendarClock, AlertTriangle, Spline } from 'lucide-react';
 import clsx from 'clsx';
 
 interface DataVizModalProps {
@@ -19,14 +19,15 @@ const COLORS = ['#13ec5b', '#0fa640', '#9db9a6', '#55695e', '#28392e', '#1c2a21'
 export const DataVizModal: React.FC<DataVizModalProps> = ({ isOpen, onClose }) => {
   const { selectedColumn, columnStats, columns } = useDataStore();
   const [vizData, setVizData] = useState<any[]>([]);
-  const [vizType, setVizType] = useState<'AUTO' | 'PIE' | 'BAR' | 'LINE' | 'BULLET' | 'HISTOGRAM' | 'WORD_CLOUD' | 'TIMELINE' | 'OUTLIERS'>('AUTO');
+  const [vizType, setVizType] = useState<'AUTO' | 'PIE' | 'BAR' | 'LINE' | 'BULLET' | 'HISTOGRAM' | 'WORD_CLOUD' | 'TIMELINE' | 'OUTLIERS' | 'DUAL_KPI'>('AUTO');
+  const [secondaryColumn, setSecondaryColumn] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (isOpen && selectedColumn) {
       loadSpecializedData();
     }
-  }, [isOpen, selectedColumn, vizType]);
+  }, [isOpen, selectedColumn, vizType, secondaryColumn]);
 
   const loadSpecializedData = async () => {
     if (!selectedColumn) return;
@@ -38,7 +39,22 @@ export const DataVizModal: React.FC<DataVizModalProps> = ({ isOpen, onClose }) =
     const isDate = type.includes('DATE') || type.includes('TIMESTAMP');
 
     try {
-      if (vizType === 'HISTOGRAM' && isNumeric) {
+      if (vizType === 'DUAL_KPI' && secondaryColumn) {
+        // Group by selectedColumn (X), Measure 1 = Count, Measure 2 = Sum/Avg of secondary
+        const sql = `
+          SELECT 
+            "${selectedColumn}" as name,
+            COUNT(*) as val1,
+            SUM("${secondaryColumn}") as val2
+          FROM current_dataset
+          WHERE "${selectedColumn}" IS NOT NULL
+          GROUP BY 1
+          ORDER BY val1 DESC
+          LIMIT 50
+        `;
+        const res = await query(sql);
+        setVizData(res);
+      } else if (vizType === 'HISTOGRAM' && isNumeric) {
         const statsSql = `SELECT MIN("${selectedColumn}") as min_val, MAX("${selectedColumn}") as max_val FROM current_dataset`;
         const stats = await query(statsSql);
         const min = Number(stats[0].min_val);
@@ -136,6 +152,7 @@ export const DataVizModal: React.FC<DataVizModalProps> = ({ isOpen, onClose }) =
   const colType = columns.find(c => c.name === selectedColumn)?.type.toUpperCase() || '';
   const isNumeric = colType.match(/INT|DOUBLE|DECIMAL/i);
   const isDate = colType.match(/DATE|TIMESTAMP/i);
+  const numericColumns = columns.filter(c => c.type.match(/INT|DOUBLE|DECIMAL/i) && c.name !== selectedColumn);
 
   const renderWordCloud = () => {
     const maxVal = Math.max(...vizData.map(d => d.value));
@@ -177,6 +194,7 @@ export const DataVizModal: React.FC<DataVizModalProps> = ({ isOpen, onClose }) =
              <button onClick={() => setVizType('PIE')} className={clsx("p-1.5 rounded transition-colors", vizType === 'PIE' ? "bg-primary text-black" : "text-text-muted hover:text-white")} title="Camembert"><PieIcon size={16} /></button>
              <button onClick={() => setVizType('BULLET')} className={clsx("p-1.5 rounded transition-colors", vizType === 'BULLET' ? "bg-primary text-black" : "text-text-muted hover:text-white")} title="Bullet (Cible)"><Target size={16} /></button>
              <button onClick={() => setVizType('WORD_CLOUD')} className={clsx("p-1.5 rounded transition-colors", vizType === 'WORD_CLOUD' ? "bg-primary text-black" : "text-text-muted hover:text-white")} title="Nuage de Mots"><Cloud size={16} /></button>
+             <button onClick={() => setVizType('DUAL_KPI')} className={clsx("p-1.5 rounded transition-colors", vizType === 'DUAL_KPI' ? "bg-primary text-black" : "text-text-muted hover:text-white")} title="Dual KPI"><Spline size={16} /></button>
              {isNumeric && (
                <>
                  <button onClick={() => setVizType('HISTOGRAM')} className={clsx("p-1.5 rounded transition-colors", vizType === 'HISTOGRAM' ? "bg-primary text-black" : "text-text-muted hover:text-white")} title="Histogramme"><Activity size={16} /></button>
@@ -192,6 +210,20 @@ export const DataVizModal: React.FC<DataVizModalProps> = ({ isOpen, onClose }) =
           </button>
         </div>
 
+        {vizType === 'DUAL_KPI' && (
+          <div className="p-2 bg-surface-active/20 flex items-center justify-center gap-2 border-b border-border-dark">
+             <span className="text-[10px] uppercase font-bold text-text-muted">Métrique Secondaire (Somme) :</span>
+             <select 
+               className="bg-background-dark border border-border-dark rounded text-xs px-2 py-1 outline-none focus:border-primary text-white"
+               onChange={(e) => setSecondaryColumn(e.target.value)}
+               value={secondaryColumn || ''}
+             >
+               <option value="">-- Sélectionner une colonne numérique --</option>
+               {numericColumns.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+             </select>
+          </div>
+        )}
+
         <div className="flex-1 p-8 bg-background-dark/30 relative">
           {loading && (
             <div className="absolute inset-0 z-10 bg-surface-dark/50 flex items-center justify-center">
@@ -200,7 +232,18 @@ export const DataVizModal: React.FC<DataVizModalProps> = ({ isOpen, onClose }) =
           )}
           <ResponsiveContainer width="100%" height="100%">
             {vizType === 'WORD_CLOUD' ? renderWordCloud() :
-             vizType === 'TIMELINE' ? (
+             vizType === 'DUAL_KPI' && secondaryColumn ? (
+               <ComposedChart data={vizData}>
+                 <CartesianGrid strokeDasharray="3 3" stroke="#28392e" vertical={false} />
+                 <XAxis dataKey="name" stroke="#55695e" fontSize={10} />
+                 <YAxis yAxisId="left" stroke="#13ec5b" fontSize={10} label={{ value: 'Count', angle: -90, position: 'insideLeft' }} />
+                 <YAxis yAxisId="right" orientation="right" stroke="#9db9a6" fontSize={10} label={{ value: 'Sum', angle: 90, position: 'insideRight' }} />
+                 <Tooltip contentStyle={{ backgroundColor: '#1c2a21', borderColor: '#28392e', color: '#fff' }} />
+                 <Legend />
+                 <Bar yAxisId="left" dataKey="val1" fill="#13ec5b" name="Nombre (Count)" barSize={20} radius={[4, 4, 0, 0]} />
+                 <Line yAxisId="right" type="monotone" dataKey="val2" stroke="#ffffff" name={`Somme (${secondaryColumn})`} strokeWidth={2} />
+               </ComposedChart>
+             ) : vizType === 'TIMELINE' ? (
                <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#28392e" />
                   <XAxis type="number" dataKey="x" name="Date" domain={['auto', 'auto']} tickFormatter={(unix) => new Date(unix).toLocaleDateString()} stroke="#55695e" fontSize={10} />
@@ -265,7 +308,7 @@ export const DataVizModal: React.FC<DataVizModalProps> = ({ isOpen, onClose }) =
 
         <div className="p-4 border-t border-surface-active bg-surface-dark flex justify-between items-center text-xs text-text-muted">
            <div className="flex gap-4">
-             <div className="flex items-center gap-2"><div className="size-2 rounded-full bg-primary" /><span>Échantillon: Top {vizType === 'OUTLIERS' || vizType === 'TIMELINE' ? '200-500' : '100'}</span></div>
+             <div className="flex items-center gap-2"><div className="size-2 rounded-full bg-primary" /><span>Échantillon: Top 100</span></div>
              <div>Type: <span className="text-white font-mono">{vizType}</span></div>
            </div>
            <div className="text-text-subtle italic">Appuyez sur ESC pour fermer</div>

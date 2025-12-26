@@ -130,7 +130,12 @@ function App() {
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
-      loadFile(acceptedFiles[0]);
+      const file = acceptedFiles[0];
+      if (file.type === 'application/pdf') {
+        alert("⚠️ Module PDF/OCR non activé.\n\nPour traiter des PDFs (factures, scans), l'intégration avec un service comme 'Parsr' ou 'Unstructured' est requise.\n\nVeuillez convertir en CSV/Excel pour le moment.");
+        return;
+      }
+      loadFile(file);
     }
   }, [loadFile]);
 
@@ -139,7 +144,8 @@ function App() {
     accept: {
       'text/csv': ['.csv'],
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
-      'application/json': ['.json']
+      'application/json': ['.json'],
+      'application/pdf': ['.pdf']
     },
     maxFiles: 1,
     noClick: !!fileMeta 
