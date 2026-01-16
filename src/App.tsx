@@ -1,33 +1,6 @@
-import { useEffect, useCallback, useState, useMemo } from "react";
+import { useEffect, useCallback, useState, useMemo, lazy, Suspense } from "react";
 import Sidebar from "./components/Sidebar";
 import Toolbox from "./components/Toolbox";
-import ExportModal from "./components/ExportModal";
-import FAQPage from "./components/FAQPage";
-import FilterModal from "./components/FilterModal";
-import NormalizationModal from "./components/NormalizationModal";
-import { HealthDashboardModal } from "./components/HealthDashboardModal";
-import { DataVizModal } from "./components/DataVizModal";
-import { SplitModal } from "./components/SplitModal";
-import { SQLConsoleModal } from "./components/SQLConsoleModal";
-import { GeoMapModal } from "./components/GeoMapModal";
-import { MagicJoinModal } from "./components/MagicJoinModal";
-import { PivotModal } from "./components/PivotModal";
-import { UnpivotModal } from "./components/UnpivotModal";
-import { RegexExtractorModal } from "./components/RegexExtractorModal";
-import { FormulaModal } from "./components/FormulaModal";
-import { ConditionalLogicModal } from "./components/ConditionalLogicModal";
-import { DeduplicateModal } from "./components/DeduplicateModal";
-import { SmartDateModal } from "./components/SmartDateModal";
-import { NameSplitterModal } from "./components/NameSplitterModal";
-import { PhoneStandardizerModal } from "./components/PhoneStandardizerModal";
-import { EmailValidatorModal } from "./components/EmailValidatorModal";
-import { CurrencyNormalizerModal } from "./components/CurrencyNormalizerModal";
-import { UnitConverterModal } from "./components/UnitConverterModal";
-import { MojibakeModal } from "./components/MojibakeModal";
-import { SchemaManagerModal } from "./components/SchemaManagerModal";
-import { FixedWidthModal } from "./components/FixedWidthModal";
-import { DateDimensionModal } from "./components/DateDimensionModal";
-import { DAXModal } from "./components/DAXModal";
 import { useDataStore } from "./stores/dataStore";
 import { useViewStore } from "./stores/viewStore";
 import { useMascotStore } from "./stores/mascotStore";
@@ -37,6 +10,35 @@ import { Upload, Search, Filter, Save, FileOutput, Shield, Loader2, LogOut, Term
 import clsx from "clsx";
 import "@glideapps/glide-data-grid/dist/index.css";
 import { DataEditor, GridCell, GridCellKind, GridColumn, Item, Theme, GridSelection, CompactSelection } from "@glideapps/glide-data-grid";
+
+// Lazy load heavy modal components to improve initial load time
+const ExportModal = lazy(() => import("./components/ExportModal"));
+const FAQPage = lazy(() => import("./components/FAQPage"));
+const FilterModal = lazy(() => import("./components/FilterModal"));
+const NormalizationModal = lazy(() => import("./components/NormalizationModal"));
+const HealthDashboardModal = lazy(() => import("./components/HealthDashboardModal").then(module => ({ default: module.HealthDashboardModal })));
+const DataVizModal = lazy(() => import("./components/DataVizModal").then(module => ({ default: module.DataVizModal })));
+const SplitModal = lazy(() => import("./components/SplitModal").then(module => ({ default: module.SplitModal })));
+const SQLConsoleModal = lazy(() => import("./components/SQLConsoleModal").then(module => ({ default: module.SQLConsoleModal })));
+const GeoMapModal = lazy(() => import("./components/GeoMapModal").then(module => ({ default: module.GeoMapModal })));
+const MagicJoinModal = lazy(() => import("./components/MagicJoinModal").then(module => ({ default: module.MagicJoinModal })));
+const PivotModal = lazy(() => import("./components/PivotModal").then(module => ({ default: module.PivotModal })));
+const UnpivotModal = lazy(() => import("./components/UnpivotModal").then(module => ({ default: module.UnpivotModal })));
+const RegexExtractorModal = lazy(() => import("./components/RegexExtractorModal").then(module => ({ default: module.RegexExtractorModal })));
+const FormulaModal = lazy(() => import("./components/FormulaModal").then(module => ({ default: module.FormulaModal })));
+const ConditionalLogicModal = lazy(() => import("./components/ConditionalLogicModal").then(module => ({ default: module.ConditionalLogicModal })));
+const DeduplicateModal = lazy(() => import("./components/DeduplicateModal").then(module => ({ default: module.DeduplicateModal })));
+const SmartDateModal = lazy(() => import("./components/SmartDateModal").then(module => ({ default: module.SmartDateModal })));
+const NameSplitterModal = lazy(() => import("./components/NameSplitterModal").then(module => ({ default: module.NameSplitterModal })));
+const PhoneStandardizerModal = lazy(() => import("./components/PhoneStandardizerModal").then(module => ({ default: module.PhoneStandardizerModal })));
+const EmailValidatorModal = lazy(() => import("./components/EmailValidatorModal").then(module => ({ default: module.EmailValidatorModal })));
+const CurrencyNormalizerModal = lazy(() => import("./components/CurrencyNormalizerModal").then(module => ({ default: module.CurrencyNormalizerModal })));
+const UnitConverterModal = lazy(() => import("./components/UnitConverterModal").then(module => ({ default: module.UnitConverterModal })));
+const MojibakeModal = lazy(() => import("./components/MojibakeModal").then(module => ({ default: module.MojibakeModal })));
+const SchemaManagerModal = lazy(() => import("./components/SchemaManagerModal").then(module => ({ default: module.SchemaManagerModal })));
+const FixedWidthModal = lazy(() => import("./components/FixedWidthModal").then(module => ({ default: module.FixedWidthModal })));
+const DateDimensionModal = lazy(() => import("./components/DateDimensionModal").then(module => ({ default: module.DateDimensionModal })));
+const DAXModal = lazy(() => import("./components/DAXModal").then(module => ({ default: module.DAXModal })));
 
 function App() {
   const { 
@@ -57,7 +59,7 @@ function App() {
     resetData,
     restoreSession
   } = useDataStore();
-  const { openFilter, isNormalizationOpen, closeNormalization } = useViewStore();
+  const { openFilter, isNormalizationOpen, closeNormalization, isFilterOpen } = useViewStore();
   const { setMascot, resetMascot } = useMascotStore();
 
   const [gridSelection, setGridSelection] = useState<GridSelection | null>(null);
@@ -293,33 +295,35 @@ function App() {
         </div>
       </header>
 
-      <ExportModal isOpen={isExportOpen} onClose={() => setIsExportOpen(false)} />
-      <FAQPage isOpen={isFAQOpen} onClose={() => setIsFAQOpen(false)} />
-      <FilterModal />
-      <NormalizationModal isOpen={isNormalizationOpen} onClose={closeNormalization} />
-      <HealthDashboardModal isOpen={isHealthOpen} onClose={() => setIsHealthOpen(false)} />
-      <DataVizModal isOpen={isVizOpen} onClose={() => setIsVizOpen(false)} />
-      <SplitModal isOpen={isSplitOpen} onClose={() => setIsSplitOpen(false)} />
-      <SQLConsoleModal isOpen={isSQLOpen} onClose={() => setIsSQLOpen(false)} />
-      <GeoMapModal isOpen={isMapOpen} onClose={() => setIsMapOpen(false)} />
-      <MagicJoinModal isOpen={isJoinOpen} onClose={() => setIsJoinOpen(false)} />
-      <PivotModal isOpen={isPivotOpen} onClose={() => setIsPivotOpen(false)} />
-      <UnpivotModal isOpen={isUnpivotOpen} onClose={() => setIsUnpivotOpen(false)} />
-      <RegexExtractorModal isOpen={isRegexOpen} onClose={() => setIsRegexOpen(false)} />
-      <FormulaModal isOpen={isFormulaOpen} onClose={() => setIsFormulaOpen(false)} />
-      <ConditionalLogicModal isOpen={isLogicOpen} onClose={() => setIsLogicOpen(false)} />
-      <DeduplicateModal isOpen={isDedupOpen} onClose={() => setIsDedupOpen(false)} />
-      <SmartDateModal isOpen={isSmartDateOpen} onClose={() => setIsSmartDateOpen(false)} />
-      <NameSplitterModal isOpen={isNameOpen} onClose={() => setIsNameOpen(false)} />
-      <PhoneStandardizerModal isOpen={isPhoneOpen} onClose={() => setIsPhoneOpen(false)} />
-      <EmailValidatorModal isOpen={isEmailOpen} onClose={() => setIsEmailOpen(false)} />
-      <CurrencyNormalizerModal isOpen={isCurrencyOpen} onClose={() => setIsCurrencyOpen(false)} />
-      <UnitConverterModal isOpen={isUnitOpen} onClose={() => setIsUnitOpen(false)} />
-      <MojibakeModal isOpen={isMojibakeOpen} onClose={() => setIsMojibakeOpen(false)} />
-      <SchemaManagerModal isOpen={isSchemaOpen} onClose={() => setIsSchemaOpen(false)} />
-      <FixedWidthModal isOpen={isFixedOpen} onClose={() => setIsFixedOpen(false)} />
-      <DateDimensionModal isOpen={isCalendarOpen} onClose={() => setIsCalendarOpen(false)} />
-      <DAXModal isOpen={isDAXOpen} onClose={() => setIsDAXOpen(false)} />
+      <Suspense fallback={null}>
+        <ExportModal isOpen={isExportOpen} onClose={() => setIsExportOpen(false)} />
+        <FAQPage isOpen={isFAQOpen} onClose={() => setIsFAQOpen(false)} />
+        {isFilterOpen && <FilterModal />}
+        <NormalizationModal isOpen={isNormalizationOpen} onClose={closeNormalization} />
+        <HealthDashboardModal isOpen={isHealthOpen} onClose={() => setIsHealthOpen(false)} />
+        <DataVizModal isOpen={isVizOpen} onClose={() => setIsVizOpen(false)} />
+        <SplitModal isOpen={isSplitOpen} onClose={() => setIsSplitOpen(false)} />
+        <SQLConsoleModal isOpen={isSQLOpen} onClose={() => setIsSQLOpen(false)} />
+        <GeoMapModal isOpen={isMapOpen} onClose={() => setIsMapOpen(false)} />
+        <MagicJoinModal isOpen={isJoinOpen} onClose={() => setIsJoinOpen(false)} />
+        <PivotModal isOpen={isPivotOpen} onClose={() => setIsPivotOpen(false)} />
+        <UnpivotModal isOpen={isUnpivotOpen} onClose={() => setIsUnpivotOpen(false)} />
+        <RegexExtractorModal isOpen={isRegexOpen} onClose={() => setIsRegexOpen(false)} />
+        <FormulaModal isOpen={isFormulaOpen} onClose={() => setIsFormulaOpen(false)} />
+        <ConditionalLogicModal isOpen={isLogicOpen} onClose={() => setIsLogicOpen(false)} />
+        <DeduplicateModal isOpen={isDedupOpen} onClose={() => setIsDedupOpen(false)} />
+        <SmartDateModal isOpen={isSmartDateOpen} onClose={() => setIsSmartDateOpen(false)} />
+        <NameSplitterModal isOpen={isNameOpen} onClose={() => setIsNameOpen(false)} />
+        <PhoneStandardizerModal isOpen={isPhoneOpen} onClose={() => setIsPhoneOpen(false)} />
+        <EmailValidatorModal isOpen={isEmailOpen} onClose={() => setIsEmailOpen(false)} />
+        <CurrencyNormalizerModal isOpen={isCurrencyOpen} onClose={() => setIsCurrencyOpen(false)} />
+        <UnitConverterModal isOpen={isUnitOpen} onClose={() => setIsUnitOpen(false)} />
+        <MojibakeModal isOpen={isMojibakeOpen} onClose={() => setIsMojibakeOpen(false)} />
+        <SchemaManagerModal isOpen={isSchemaOpen} onClose={() => setIsSchemaOpen(false)} />
+        <FixedWidthModal isOpen={isFixedOpen} onClose={() => setIsFixedOpen(false)} />
+        <DateDimensionModal isOpen={isCalendarOpen} onClose={() => setIsCalendarOpen(false)} />
+        <DAXModal isOpen={isDAXOpen} onClose={() => setIsDAXOpen(false)} />
+      </Suspense>
 
       {isRestoreOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-xl animate-in fade-in duration-500">
