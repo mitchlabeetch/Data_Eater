@@ -349,8 +349,15 @@ function App() {
           <div className="h-14 border-b border-border-dark flex items-center justify-between px-6 bg-background-dark/30 shrink-0">
             <div className="flex items-center gap-4">
               <div className="relative">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
-                <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Rechercher (SQL)..." className="bg-surface-dark border border-border-dark rounded-md h-8 pl-9 pr-4 text-xs w-64 focus:outline-none focus:border-primary transition-colors placeholder:text-subtle" />
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" aria-hidden="true" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Rechercher (SQL)..."
+                  aria-label="Rechercher dans les données (SQL)"
+                  className="bg-surface-dark border border-border-dark rounded-md h-8 pl-9 pr-4 text-xs w-64 focus:outline-none focus:border-primary transition-colors placeholder:text-subtle"
+                />
               </div>
               <button onClick={openFilter} className="flex items-center gap-1.5 text-xs font-bold text-text-muted hover:text-white transition-colors">
                 <Filter size={14} /> Filtres
