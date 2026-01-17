@@ -45,6 +45,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onOpenFAQ, onOpenHealth, onOpenViz })
             onClick={onOpenFAQ}
             className="p-1.5 rounded-lg hover:bg-surface-active text-text-muted hover:text-white transition-colors"
             title="Comment ça marche ?"
+            aria-label="Ouvrir le manuel d'aide"
           >
             <HelpCircle size={16} />
           </button>

@@ -45,6 +45,8 @@ const FilterModal: React.FC = () => {
                 onClick={() => setShowFavs(!showFavs)}
                 className={clsx("p-2 rounded-lg transition-colors", showFavs ? "bg-primary text-background-dark" : "hover:bg-surface-active text-text-muted hover:text-white")}
                 title="Mes Favoris"
+                aria-label="Afficher les favoris"
+                aria-expanded={showFavs}
               >
                 <Star size={18} />
               </button>
@@ -61,7 +63,12 @@ const FilterModal: React.FC = () => {
                           <button onClick={() => { loadFavorite(fav.id); setShowFavs(false); }} className="text-xs font-medium text-white flex-1 text-left truncate">
                             {fav.name}
                           </button>
-                          <button onClick={() => deleteFavorite(fav.id)} className="text-subtle hover:text-red-400 p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => deleteFavorite(fav.id)}
+                            className="text-subtle hover:text-red-400 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                            aria-label={`Supprimer le favori ${fav.name}`}
+                            title="Supprimer"
+                          >
                             <X size={12} />
                           </button>
                         </div>
@@ -72,10 +79,20 @@ const FilterModal: React.FC = () => {
               )}
             </div>
 
-            <button onClick={clearRules} className="p-2 rounded-lg hover:bg-surface-active text-text-muted hover:text-white transition-colors" title="Tout Effacer">
+            <button
+              onClick={clearRules}
+              className="p-2 rounded-lg hover:bg-surface-active text-text-muted hover:text-white transition-colors"
+              title="Tout Effacer"
+              aria-label="Effacer tous les filtres"
+            >
               <Trash2 size={18} />
             </button>
-            <button onClick={closeFilter} className="p-2 rounded-lg hover:bg-surface-active text-text-muted hover:text-white transition-colors" title="Fermer">
+            <button
+              onClick={closeFilter}
+              className="p-2 rounded-lg hover:bg-surface-active text-text-muted hover:text-white transition-colors"
+              title="Fermer"
+              aria-label="Fermer la fenêtre"
+            >
               <X size={18} />
             </button>
           </div>
