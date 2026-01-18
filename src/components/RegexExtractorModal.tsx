@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useDataStore } from '../stores/dataStore';
+import { query } from '../services/duckdb';
 import { Regex, X, Play, Loader2, ArrowRight } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -47,7 +48,11 @@ export const RegexExtractorModal: React.FC<RegexExtractorModalProps> = ({ isOpen
     if (!selectedColumn || !pattern || newColNames.length === 0) return;
     setIsProcessing(true);
     try {
-      for (const colName of newColNames) { await executeMutation(`ALTER TABLE current_dataset ADD COLUMN IF NOT EXISTS "${colName}" VARCHAR`); }
+      // Use query() directly for ALTER TABLE to avoid full state refresh/overhead for every column
+      for (const colName of newColNames) {
+        await query(`ALTER TABLE current_dataset ADD COLUMN IF NOT EXISTS "${colName}" VARCHAR`);
+      }
+
       const setClauses = newColNames.map((colName, idx) => `"${colName}" = regexp_extract("${selectedColumn}", '${pattern.replace(/'/g, "''")}', ${idx + 1})`).join(', ');
       await executeMutation(`UPDATE current_dataset SET ${setClauses}`, `Extraction Regex sur ${selectedColumn}`);
       onClose();
