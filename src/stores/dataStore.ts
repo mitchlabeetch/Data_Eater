@@ -67,6 +67,7 @@ interface DataStore {
   selectColumn: (colName: string | null) => Promise<void>;
   fetchRows: (limit?: number) => Promise<any[]>;
   queryResult: (sql: string) => Promise<any[]>;
+  rawQuery: (sql: string) => Promise<any[]>;
   clearDiff: () => void;
   prepareForCloud: (hiddenCols: string[]) => Promise<any[]>;
   reconcileCloud: (processedData: any[]) => Promise<void>;
@@ -335,6 +336,10 @@ export const useDataStore = create<DataStore>((set, get) => ({
       console.error("Raw Query Error", e);
       return [];
     }
+  },
+
+  rawQuery: async (sql: string) => {
+    return await query(sql);
   },
 
   executeMutation: async (sql: string, description?: string) => {
