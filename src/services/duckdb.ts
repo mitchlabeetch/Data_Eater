@@ -18,22 +18,33 @@ const MANUAL_BUNDLES: duckdb.DuckDBBundles = {
 
 let db: duckdb.AsyncDuckDB | null = null;
 let conn: duckdb.AsyncDuckDBConnection | null = null;
+let initPromise: Promise<{ db: duckdb.AsyncDuckDB; conn: duckdb.AsyncDuckDBConnection }> | null = null;
 
 export const initDuckDB = async () => {
-    if (db) return { db, conn };
+    if (db && conn) return { db, conn };
+    if (initPromise) return initPromise;
 
-    // Select bundle based on browser capability
-    const bundle = await duckdb.selectBundle(MANUAL_BUNDLES);
-    const worker = new Worker(bundle.mainWorker!);
-    
-    const logger = new duckdb.ConsoleLogger();
-    db = new duckdb.AsyncDuckDB(logger, worker);
-    
-    await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
-    conn = await db.connect();
-    
-    console.log("🦆 Glouton Engine (DuckDB) Initialized");
-    return { db, conn };
+    initPromise = (async () => {
+        try {
+            // Select bundle based on browser capability
+            const bundle = await duckdb.selectBundle(MANUAL_BUNDLES);
+            const worker = new Worker(bundle.mainWorker!);
+
+            const logger = new duckdb.ConsoleLogger();
+            db = new duckdb.AsyncDuckDB(logger, worker);
+
+            await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+            conn = await db.connect();
+
+            console.log("🦆 Glouton Engine (DuckDB) Initialized");
+            return { db, conn };
+        } catch (e) {
+            initPromise = null;
+            throw e;
+        }
+    })();
+
+    return initPromise;
 };
 
 export const getDB = () => {
