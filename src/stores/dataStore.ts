@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { initDuckDB, ingestCSV, query, registerFile } from '../services/duckdb';
+import JsonWorker from '../workers/jsonSerializer?worker';
 import { useMascotStore } from './mascotStore';
 import { useErrorStore } from './errorStore';
 import { useViewStore } from './viewStore';
@@ -479,8 +480,25 @@ export const useDataStore = create<DataStore>((set, get) => ({
       const { db, conn } = await initDuckDB();
       if (!db || !conn) return;
 
-      const jsonContent = JSON.stringify(processedData);
-      await db.registerFileText('cloud_response.json', jsonContent);
+      // Offload JSON serialization to a worker to prevent main thread blocking
+      const buffer = await new Promise<Uint8Array>((resolve, reject) => {
+        const worker = new JsonWorker();
+        worker.onmessage = (e) => {
+          if (e.data.error) {
+            reject(new Error(e.data.error));
+          } else {
+            resolve(e.data.buffer);
+          }
+          worker.terminate();
+        };
+        worker.onerror = (e) => {
+          reject(e);
+          worker.terminate();
+        };
+        worker.postMessage(processedData);
+      });
+
+      await db.registerFileBuffer('cloud_response.json', buffer);
       
       await query(`DROP TABLE IF EXISTS cloud_incoming`);
       await query(`CREATE TABLE cloud_incoming AS SELECT * FROM read_json_auto('cloud_response.json')`);
