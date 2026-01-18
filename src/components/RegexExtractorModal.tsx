@@ -16,21 +16,46 @@ export const RegexExtractorModal: React.FC<RegexExtractorModalProps> = ({ isOpen
   const [newColNames, setNewColNames] = useState<string[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sampleRows, setSampleRows] = useState<any[]>([]);
 
   useEffect(() => {
-    if (isOpen && selectedColumn && pattern) {
+    if (isOpen) {
+      let active = true;
+      setSampleRows([]); // Clear previous data
+      setIsProcessing(true);
+      setError(null);
+
+      fetchRows(5)
+        .then(rows => {
+          if (active) {
+            setSampleRows(rows);
+            setIsProcessing(false);
+          }
+        })
+        .catch(err => {
+          if (active) {
+            setError(err instanceof Error ? err.message : String(err));
+            setIsProcessing(false);
+          }
+        });
+
+      return () => { active = false; };
+    }
+  }, [isOpen, fetchRows]);
+
+  useEffect(() => {
+    if (isOpen && selectedColumn && pattern && sampleRows.length > 0) {
       const timer = setTimeout(loadPreview, 300);
       return () => clearTimeout(timer);
     }
-  }, [isOpen, selectedColumn, pattern]);
+  }, [isOpen, selectedColumn, pattern, sampleRows]);
 
-  const loadPreview = async () => {
-    if (!selectedColumn || !pattern) return;
+  const loadPreview = () => {
+    if (!selectedColumn || !pattern || sampleRows.length === 0) return;
     setError(null);
     try {
-      const rows = await fetchRows(5);
       const re = new RegExp(pattern);
-      const extracted = rows.map(r => {
+      const extracted = sampleRows.map(r => {
         const val = String(r[selectedColumn] || '');
         const match = val.match(re);
         if (match) return match.length > 1 ? match.slice(1) : [match[0]];
