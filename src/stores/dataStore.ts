@@ -94,8 +94,10 @@ const classifyError = (e: any): string => {
 };
 
 const persistSession = async (history: any[], fileMeta: any) => {
-  await localforage.setItem('glouton_history', history);
-  await localforage.setItem('glouton_file_meta', fileMeta);
+  await Promise.all([
+    localforage.setItem('glouton_history', history),
+    localforage.setItem('glouton_file_meta', fileMeta)
+  ]);
 };
 
 export const useDataStore = create<DataStore>((set, get) => ({
