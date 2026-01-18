@@ -408,19 +408,17 @@ export const useDataStore = create<DataStore>((set, get) => ({
           MAX(${safeCol}) as max_val
         FROM current_dataset
       `;
-      const basicRes = await query(basicSql);
-      const stats = basicRes[0];
 
       const colDef = state.columns.find(c => c.name === colName);
-      let extendedStats: Partial<ColumnStats> = {};
+
+      const basicPromise = query(basicSql);
+      let extendedPromise: Promise<any[]>;
+      let isNumeric = false;
 
       if (colDef?.type === 'DOUBLE' || colDef?.type === 'BIGINT' || colDef?.type === 'INTEGER') {
+        isNumeric = true;
         const numSql = `SELECT SUM(${safeCol}) as sum_val, AVG(${safeCol}) as avg_val FROM current_dataset`;
-        const numRes = await query(numSql);
-        extendedStats = {
-          sum: numRes[0].sum_val,
-          avg: numRes[0].avg_val
-        };
+        extendedPromise = query(numSql);
       } else {
         const topSql = `
           SELECT ${safeCol} as val, COUNT(*) as cnt 
@@ -430,9 +428,22 @@ export const useDataStore = create<DataStore>((set, get) => ({
           ORDER BY cnt DESC 
           LIMIT 5
         `;
-        const topRes = await query(topSql);
+        extendedPromise = query(topSql);
+      }
+
+      const [basicRes, extendedRes] = await Promise.all([basicPromise, extendedPromise]);
+      const stats = basicRes[0];
+
+      let extendedStats: Partial<ColumnStats> = {};
+
+      if (isNumeric) {
+         extendedStats = {
+          sum: extendedRes[0].sum_val,
+          avg: extendedRes[0].avg_val
+        };
+      } else {
         extendedStats = {
-          topValues: topRes.map((r: any) => ({ value: String(r.val), count: Number(r.cnt) }))
+          topValues: extendedRes.map((r: any) => ({ value: String(r.val), count: Number(r.cnt) }))
         };
       }
 
