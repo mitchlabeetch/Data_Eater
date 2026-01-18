@@ -69,15 +69,9 @@ export const FuzzyGroupModal: React.FC<FuzzyGroupModalProps> = ({ isOpen, onClos
         groups.get(foundKey)?.add(v2);
       });
 
-      const foundClusters: Cluster[] = Array.from(groups.entries()).map(([key, set]) => ({
-        canonical: key, // Default to one of them
-        members: Array.from(set).filter(m => m !== key) // Members excluding canonical (for display, adjusted below)
-      }));
-      
-      // Fix structure for UI (Canonical + all members)
-      const uiClusters = foundClusters.map(c => ({
-         canonical: c.canonical,
-         members: [c.canonical, ...c.members].sort()
+      const uiClusters: Cluster[] = Array.from(groups.entries()).map(([key, set]) => ({
+        canonical: key,
+        members: Array.from(set).sort()
       }));
 
       setClusters(uiClusters);
