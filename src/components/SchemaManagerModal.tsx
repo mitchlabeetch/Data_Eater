@@ -17,7 +17,7 @@ const mainframize = (name: string): string => {
 };
 
 export const SchemaManagerModal: React.FC<SchemaManagerModalProps> = ({ isOpen, onClose }) => {
-  const { columns, executeMutation } = useDataStore();
+  const { columns, executeMutation, rawQuery } = useDataStore();
   const [mappings, setMappings] = useState<Record<string, string>>({});
   const [order, setOrder] = useState<string[]>([]);
   const [mode, setMode] = useState<'STANDARD' | 'AS400'>('STANDARD');
@@ -69,18 +69,34 @@ export const SchemaManagerModal: React.FC<SchemaManagerModalProps> = ({ isOpen, 
   const handleApply = async () => {
     setIsProcessing(true);
     try {
-      // 1. Rename columns
+      // 1. Rename columns (Parallelized)
+      let renameCount = 0;
+      const renamePromises = [];
+
       for (const [oldName, newName] of Object.entries(mappings)) {
         if (oldName !== newName) {
-          await executeMutation(`ALTER TABLE current_dataset RENAME COLUMN "${oldName}" TO "${newName}"`, `Renommage: ${newName}`);
+           // Use rawQuery to avoid store updates (and heavy refresh side effects) per column
+           renamePromises.push(
+               rawQuery(`ALTER TABLE current_dataset RENAME COLUMN "${oldName}" TO "${newName}"`)
+           );
+           renameCount++;
         }
+      }
+
+      if (renamePromises.length > 0) {
+          await Promise.all(renamePromises);
       }
       
       // 2. Reorder (DuckDB doesn't have an EASY reorder, we must recreate or select in order)
       // We'll use a VIEW trick or just update the internal store if we only want UI order.
       // But for a true schema manager, we should recreate the table.
       const mappedOrder = order.map(oldName => `"${mappings[oldName]}"`).join(', ');
-      await executeMutation(`CREATE TABLE schema_temp AS SELECT ${mappedOrder} FROM current_dataset`, "Réorganisation des colonnes");
+
+      const desc = renameCount > 0
+          ? `Réorganisation et Renommage (${renameCount} cols)`
+          : "Réorganisation des colonnes";
+
+      await executeMutation(`CREATE TABLE schema_temp AS SELECT ${mappedOrder} FROM current_dataset`, desc);
       await executeMutation(`DROP TABLE current_dataset`, "Nettoyage ancien schéma");
       await executeMutation(`ALTER TABLE schema_temp RENAME TO current_dataset`, "Finalisation du nouveau schéma");
       
