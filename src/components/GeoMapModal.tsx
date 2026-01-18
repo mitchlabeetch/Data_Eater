@@ -5,23 +5,7 @@ import 'leaflet/dist/leaflet.css';
 import { useDataStore } from '../stores/dataStore';
 import { query } from '../services/duckdb';
 import { Map as MapIcon, X, Loader2, Filter, ZoomOut } from 'lucide-react';
-
-// Fix for default marker icons in Leaflet + Webpack/Vite
-import markerIcon from 'leaflet/dist/images/marker-icon.png';
-import markerIconRetina from 'leaflet/dist/images/marker-icon-2x.png';
-import markerShadow from 'leaflet/dist/images/marker-shadow.png';
-
-const DefaultIcon = L.icon({
-  iconUrl: markerIcon,
-  iconRetinaUrl: markerIconRetina,
-  shadowUrl: markerShadow,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
-});
-
-L.Marker.prototype.options.icon = DefaultIcon;
+import '../lib/leafletSetup';
 
 interface GeoPoint {
   lat: number;
