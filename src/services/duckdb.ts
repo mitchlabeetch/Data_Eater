@@ -49,11 +49,28 @@ export const query = async (sql: string) => {
     return result.toArray().map((row) => row.toJSON());
 };
 
+// Helper to check for magic bytes (Zip signature: PK\x03\x04)
+const isZipFile = async (file: File): Promise<boolean> => {
+    if (file.size < 4) return false;
+    const slice = file.slice(0, 4);
+    const buffer = await slice.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    return bytes[0] === 0x50 && bytes[1] === 0x4B && bytes[2] === 0x03 && bytes[3] === 0x04;
+};
+
 export const registerFile = async (file: File): Promise<string> => {
     const { db } = getDB();
     if (!db) throw new Error("DB not ready");
 
-    if (file.name.endsWith('.xlsx')) {
+    const isExcelExtension = /\.xlsx$/i.test(file.name);
+    let isExcel = false;
+
+    if (isExcelExtension) {
+        // Only check magic bytes if extension matches to avoid unnecessary reads for every file
+        isExcel = await isZipFile(file);
+    }
+
+    if (isExcel) {
       const ExcelJS = (await import('exceljs')).default;
       const workbook = new ExcelJS.Workbook();
       const buffer = await file.arrayBuffer();
@@ -86,7 +103,16 @@ export const ingestCSV = async (file: File) => {
     
     await conn.query(`DROP TABLE IF EXISTS ${tableName}`);
 
-    if (file.name.endsWith('.xlsx')) {
+    // Detect if the file was converted to CSV or if it was processed as a raw file.
+    // registerFile returns a temp CSV filename (starting with 'converted_') if it processed an Excel file.
+    const isConverted = fileNameToLoad.startsWith('converted_') && fileNameToLoad.endsWith('.csv');
+
+    // Use read_csv_auto if:
+    // 1. The file was converted to CSV by registerFile.
+    // 2. The original file has an .xlsx extension (case-insensitive).
+    //    Note: If registerFile did NOT convert it (e.g., fake .xlsx), it's likely a raw CSV.
+    //    DuckDB's read_csv_auto handles CSVs robustly, even with .xlsx extension.
+    if (isConverted || /\.xlsx$/i.test(file.name)) {
          await conn.query(`CREATE TABLE ${tableName} AS SELECT * FROM read_csv_auto('${fileNameToLoad}')`);
     } else {
         // Sniff for Encoding and Delimiter
