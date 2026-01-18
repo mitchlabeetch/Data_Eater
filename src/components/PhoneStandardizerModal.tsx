@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useDataStore } from '../stores/dataStore';
 import { Phone, X, Loader2, Globe } from 'lucide-react';
 import parsePhoneNumber, { CountryCode } from 'libphonenumber-js';
+import { initDuckDB } from '../services/duckdb';
 
 interface PhoneStandardizerModalProps {
   isOpen: boolean;
@@ -46,18 +47,35 @@ export const PhoneStandardizerModal: React.FC<PhoneStandardizerModalProps> = ({ 
           if (parsed && parsed.isValid()) {
             const formatted = parsed.format('E.164');
             if (formatted !== val) {
-              mappings.push({ old: val.replace(/'/g, "''"), new: formatted });
+              // Optimization: Don't SQL escape here, we will use JSON
+              mappings.push({ old: val, new: formatted });
             }
           }
         } catch {}
       });
-      const BATCH_SIZE = 200;
-      for (let i = 0; i < mappings.length; i += BATCH_SIZE) {
-        const chunk = mappings.slice(i, i + BATCH_SIZE);
-        const caseBlocks = chunk.map(m => `WHEN '${m.old}' THEN '${m.new}'`).join(' ');
-        const sql = `UPDATE current_dataset SET "${selectedColumn}" = CASE "${selectedColumn}" ${caseBlocks} ELSE "${selectedColumn}" END WHERE "${selectedColumn}" IN (${chunk.map(m => `'${m.old}'`).join(',')})`;
-        await executeMutation(sql, `Normalisation téléphones (${i + chunk.length}/${mappings.length})`);
+
+      if (mappings.length === 0) {
+        onClose();
+        return;
       }
+
+      const { db } = await initDuckDB();
+      if (!db) throw new Error("Database not ready");
+
+      const mappingFileName = `phone_mappings_${Date.now()}.json`;
+      const jsonContent = JSON.stringify(mappings);
+      await db.registerFileText(mappingFileName, jsonContent);
+
+      const sql = `
+        CREATE TABLE phone_mappings_temp AS SELECT * FROM read_json_auto('${mappingFileName}');
+        UPDATE current_dataset
+        SET "${selectedColumn}" = phone_mappings_temp.new
+        FROM phone_mappings_temp
+        WHERE current_dataset."${selectedColumn}" = phone_mappings_temp.old;
+        DROP TABLE phone_mappings_temp;
+      `;
+
+      await executeMutation(sql, `Normalisation téléphones (${mappings.length} numéros)`);
       onClose();
     } catch (e) {
       console.error(e);

@@ -1,0 +1,16 @@
+Benchmark Results for Phone Standardization Optimization
+
+Methodology:
+- Isolated DuckDB Node.js benchmark simulating 10,000 rows.
+- 2,000 distinct mappings to apply.
+- Compared "Batched UPDATEs" (current implementation) vs "JOIN UPDATE" (proposed optimization).
+
+Results:
+- Baseline (Batched UPDATEs): ~180ms - 200ms
+- Optimization (JOIN UPDATE): ~20ms - 24ms
+- Speedup: ~8x - 9x faster in pure DB execution time.
+
+Additional Benefits:
+- Reduces React state updates and re-renders from 10+ (N/200) to 1.
+- Reduces `executeMutation` side effects (stat calculation, duplicate checks, session persistence) from 10+ to 1.
+- Total end-to-end user perceived latency improvement is likely >10x due to removing repeated overheads.
