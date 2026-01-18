@@ -587,8 +587,10 @@ export const useDataStore = create<DataStore>((set, get) => ({
         healthReport: null,
         history: []
       });
-      await localforage.removeItem('glouton_history');
-      await localforage.removeItem('glouton_file_meta');
+      await Promise.all([
+        localforage.removeItem('glouton_history'),
+        localforage.removeItem('glouton_file_meta')
+      ]);
       useMascotStore.getState().resetMascot();
     } catch (e) {
       console.error(e);
