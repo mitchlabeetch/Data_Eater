@@ -194,7 +194,9 @@ export const useDataStore = create<DataStore>((set, get) => ({
     mascot.setMascot(MASCOT_STATES.EATING, `Analyse de ${file.name}...`);
 
     try {
-      await initDuckDB();
+      if (!get().isReady) {
+        await initDuckDB();
+      }
       const result = await ingestCSV(file);
       
       if (!result) throw new Error("Ingestion failed");
