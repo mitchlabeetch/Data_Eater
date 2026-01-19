@@ -2,8 +2,6 @@ import { getCache, setCache } from './cacheService';
 
 const API_BASE = 'https://data.geopf.fr/geocodage';
 
-import { getCache, setCache } from './cacheService';
-
 export const searchAddress = async (query: string): Promise<any | null> => {
   // Check Cache
   const cachedResult = getCache<any>(query);
