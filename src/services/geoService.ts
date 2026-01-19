@@ -64,14 +64,15 @@ export const batchGeocode = async (
   
   for (let i = 0; i < queries.length; i += CHUNK_SIZE) {
     const chunk = queries.slice(i, i + CHUNK_SIZE);
+    const uniqueChunk = [...new Set(chunk)];
     
-    const promises = chunk.map(async (q) => {
+    const promises = uniqueChunk.map(async (q) => {
       const res = await searchAddress(q);
       if (res) results.set(q, res);
-      done++;
     });
 
     await Promise.all(promises);
+    done += chunk.length;
     onProgress(done, total);
     
     // Wait 1 second before next chunk to respect 50 req/s limit
