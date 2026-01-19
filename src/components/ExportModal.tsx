@@ -60,7 +60,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => {
                <p className="text-xs text-text-muted">Sauvegarder le fichier nettoyé</p>
              </div>
           </div>
-          <button onClick={onClose} className="text-text-muted hover:text-white transition-colors">
+          <button onClick={onClose} className="text-text-muted hover:text-white transition-colors" aria-label="Fermer la fenêtre d'export">
             <X size={20} />
           </button>
         </div>

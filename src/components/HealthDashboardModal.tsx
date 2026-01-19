@@ -142,6 +142,7 @@ export const HealthDashboardModal: React.FC<HealthDashboardModalProps> = ({ isOp
             <button 
               onClick={onClose}
               className="p-2 hover:bg-surface-active rounded-lg transition-colors text-text-muted hover:text-white"
+              aria-label="Fermer le bulletin de santé"
             >
               <span className="material-symbols-outlined">close</span>
             </button>

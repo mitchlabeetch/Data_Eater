@@ -69,7 +69,7 @@ const SmartQueryModal: React.FC<SmartQueryModalProps> = ({ isOpen, onClose }) =>
                <p className="text-xs text-text-muted">Traitement sémantique sécurisé sur serveur privé.</p>
              </div>
           </div>
-          <button onClick={onClose} className="text-text-muted hover:text-white"><X size={24} /></button>
+          <button onClick={onClose} className="text-text-muted hover:text-white" aria-label="Fermer l'assistant IA"><X size={24} /></button>
         </div>
 
         {/* Content */}
