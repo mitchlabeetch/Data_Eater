@@ -93,7 +93,7 @@ export const runSmartQuery = async (
     const chunk = fullData.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
     
     const result = await processBatch(userQuery, chunk, "");
-    processedData = [...processedData, ...result];
+    processedData.push(...result);
     
     onProgress(Math.round(((i + 1) / totalChunks) * 100));
   }
