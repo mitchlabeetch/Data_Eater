@@ -1,18 +1,14 @@
+import { getCache, setCache } from './cacheService';
+
 const API_BASE = 'https://data.geopf.fr/geocodage';
 
-interface CacheEntry {
-  query: string;
-  result: any;
-  timestamp: number;
-}
-
-// Simple in-memory cache for the session (could be persisted to localStorage)
-const geoCache = new Map<string, CacheEntry>();
+import { getCache, setCache } from './cacheService';
 
 export const searchAddress = async (query: string): Promise<any | null> => {
   // Check Cache
-  if (geoCache.has(query)) {
-    return geoCache.get(query)?.result;
+  const cachedResult = getCache<any>(query);
+  if (cachedResult) {
+    return cachedResult;
   }
 
   try {
@@ -29,7 +25,7 @@ export const searchAddress = async (query: string): Promise<any | null> => {
     const bestMatch = data.features && data.features.length > 0 ? data.features[0] : null;
 
     // Cache result
-    geoCache.set(query, { query, result: bestMatch, timestamp: Date.now() });
+    setCache(query, bestMatch);
     
     return bestMatch;
   } catch (e) {
