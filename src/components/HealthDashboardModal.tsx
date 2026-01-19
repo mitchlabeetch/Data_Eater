@@ -10,7 +10,7 @@ interface HealthDashboardModalProps {
 }
 
 export const HealthDashboardModal: React.FC<HealthDashboardModalProps> = ({ isOpen, onClose }) => {
-  const { healthReport, fileMeta, columns } = useDataStore();
+  const { healthReport, fileMeta, columns, rawQuery } = useDataStore();
   const setMascot = useMascotStore((s) => s.setMascot);
   const [securityIssues, setSecurityIssues] = useState<string[]>([]);
 
@@ -45,22 +45,71 @@ export const HealthDashboardModal: React.FC<HealthDashboardModalProps> = ({ isOp
   // Security Scan (Simple Heuristics inspired by scan4secrets)
   useEffect(() => {
     if (!isOpen) return;
-    const foundIssues: string[] = [];
     
-    // 1. Column Name Check
-    columns.forEach(col => {
-      const lower = col.name.toLowerCase();
-      if (lower.includes('password') || lower.includes('secret') || lower.includes('token') || lower.includes('api_key') || lower.includes('apikey')) {
-        foundIssues.push(`Colonne sensible détectée : ${col.name}`);
-      }
-    });
+    let isMounted = true;
 
-    // 2. Value Pattern Check (simulated on topValues if available or just logic placeholder)
-    // In a real app we'd scan sample rows. Here we check checking column health samples if available.
-    // Assuming columnHealth might contain samples in future, for now we rely on names or just standard patterns if we had value access.
-    
-    setSecurityIssues(foundIssues);
-  }, [isOpen, columns]);
+    const performScan = async () => {
+      const foundIssues: string[] = [];
+
+      // 1. Column Name Check
+      columns.forEach(col => {
+        const lower = col.name.toLowerCase();
+        if (lower.includes('password') || lower.includes('secret') || lower.includes('token') || lower.includes('api_key') || lower.includes('apikey')) {
+          foundIssues.push(`Colonne sensible détectée (Nom) : ${col.name}`);
+        }
+      });
+
+      // 2. Value Pattern Check
+      try {
+        const stringCols = columns.filter(c => c.type === 'VARCHAR').map(c => c.name);
+
+        if (stringCols.length > 0) {
+          // Fetch a sample of data to inspect values
+          // We select only string columns to optimize
+          const colsSql = stringCols.map(c => `"${c}"`).join(', ');
+          const sampleRows = await rawQuery(`SELECT ${colsSql} FROM current_dataset LIMIT 50`);
+
+          const patterns = [
+            { name: 'AWS Access Key', regex: /(A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}/ },
+            { name: 'Google API Key', regex: /AIza[0-9A-Za-z\-_]{35}/ },
+            { name: 'Private Key', regex: /-----BEGIN [A-Z ]+ PRIVATE KEY-----/ },
+            { name: 'Stripe Key', regex: /sk_live_[0-9a-zA-Z]{24}/ },
+            { name: 'Slack Token', regex: /xox[baprs]-([0-9a-zA-Z]{10,48})?/ },
+            { name: 'Generic Secret', regex: /(api_key|apikey|secret|password|token)\s*[:=]\s*['"][a-zA-Z0-9\-_]{16,}['"]/i } // Basic assignment detection in content
+          ];
+
+          const valueIssues = new Set<string>();
+
+          for (const row of sampleRows) {
+            for (const colName of stringCols) {
+              const val = String(row[colName] || '');
+              if (val.length < 8) continue; // Skip short strings
+
+              for (const pat of patterns) {
+                if (pat.regex.test(val)) {
+                  valueIssues.add(`Donnée sensible détectée (${pat.name}) dans : ${colName}`);
+                }
+              }
+            }
+          }
+
+          foundIssues.push(...Array.from(valueIssues));
+        }
+      } catch (e) {
+        console.error("Security value scan failed", e);
+      }
+
+      if (isMounted) {
+        setSecurityIssues(foundIssues);
+      }
+    };
+
+    performScan();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, columns, rawQuery]);
 
   const getScoreColor = (score: number) => {
     if (score >= 80) return 'text-primary';
