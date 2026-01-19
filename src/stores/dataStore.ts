@@ -479,12 +479,13 @@ export const useDataStore = create<DataStore>((set, get) => ({
       await query(`ALTER TABLE current_dataset ADD COLUMN IF NOT EXISTS data_eater_id INTEGER`);
       await query(`UPDATE current_dataset SET data_eater_id = rowid`);
 
-      await query(`DROP TABLE IF EXISTS cloud_staging`);
-      await query(`CREATE TABLE cloud_staging AS SELECT * FROM current_dataset`);
+      // Efficiently create staging table by selecting desired columns directly
+      const allCols = get().columns.map(c => c.name);
+      const visibleCols = allCols.filter(c => !hiddenCols.includes(c));
+      const colsToSelect = ['data_eater_id', ...visibleCols].map(c => `"${c}"`).join(', ');
 
-      for (const col of hiddenCols) {
-        await query(`ALTER TABLE cloud_staging DROP COLUMN IF EXISTS "${col}"`);
-      }
+      await query(`DROP TABLE IF EXISTS cloud_staging`);
+      await query(`CREATE TABLE cloud_staging AS SELECT ${colsToSelect} FROM current_dataset`);
 
       const exportData = await query(`SELECT * FROM cloud_staging`);
       return exportData;
