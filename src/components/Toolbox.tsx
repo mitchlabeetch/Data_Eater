@@ -159,7 +159,7 @@ const Toolbox: React.FC<ToolboxProps> = ({
 interface ToolButtonProps { icon: React.ReactNode; label: string; subtitle?: string; onClick?: () => void; disabled?: boolean; variant?: 'default' | 'danger'; }
 const ToolButton: React.FC<ToolButtonProps> = ({ icon, label, subtitle, onClick, disabled, variant = 'default' }) => {
   return (
-    <button onClick={onClick} disabled={disabled} className={clsx("flex items-center gap-3 p-2.5 rounded-lg border transition-all w-full text-left group relative overflow-hidden", disabled ? "opacity-50 cursor-not-allowed bg-surface-dark border-border-dark" : variant === 'danger' ? "bg-red-500/5 border-red-500/20 hover:bg-red-500/10 hover:border-red-500 text-red-400" : "bg-surface-active border-border-dark hover:border-primary hover:bg-surface-active/80 text-white")}>
+    <button onClick={onClick} disabled={disabled} className={clsx("flex items-center gap-3 p-2.5 rounded-lg border transition-all w-full text-left group relative overflow-hidden focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none", disabled ? "opacity-50 cursor-not-allowed bg-surface-dark border-border-dark" : variant === 'danger' ? "bg-red-500/5 border-red-500/20 hover:bg-red-500/10 hover:border-red-500 text-red-400" : "bg-surface-active border-border-dark hover:border-primary hover:bg-surface-active/80 text-white")}>
       <div className={clsx("transition-colors", disabled ? "text-subtle" : variant === 'danger' ? "text-red-400" : "text-text-muted group-hover:text-primary")}>{icon}</div>
       <div className="flex flex-col min-w-0"><span className="text-[11px] font-bold truncate">{label}</span>{subtitle && <span className="text-[9px] text-subtle truncate">{subtitle}</span>}</div>
     </button>

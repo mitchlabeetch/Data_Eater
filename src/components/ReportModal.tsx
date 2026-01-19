@@ -31,7 +31,7 @@ const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, report }) =>
                </p>
              </div>
           </div>
-          <button onClick={onClose} className="text-text-muted hover:text-white transition-colors">
+          <button onClick={onClose} className="text-text-muted hover:text-white transition-colors" aria-label="Fermer le rapport">
             <X size={24} />
           </button>
         </div>

@@ -75,7 +75,7 @@ const DiffModal: React.FC<DiffModalProps> = ({ isOpen, onClose }) => {
                <p className="text-xs text-text-muted">Analysez les différences entre la version actuelle et un nouveau fichier.</p>
              </div>
           </div>
-          <button onClick={onClose} className="text-text-muted hover:text-white transition-colors">
+          <button onClick={onClose} className="text-text-muted hover:text-white transition-colors" aria-label="Fermer la comparaison">
             <X size={24} />
           </button>
         </div>
@@ -111,6 +111,7 @@ const DiffModal: React.FC<DiffModalProps> = ({ isOpen, onClose }) => {
                 <button 
                   onClick={handleCloseComparison}
                   className="absolute top-2 right-2 p-1 rounded-full bg-surface-dark text-text-muted hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                  aria-label="Supprimer le fichier comparé"
                 >
                   <X size={14} />
                 </button>
