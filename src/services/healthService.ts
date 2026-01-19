@@ -54,6 +54,37 @@ export const analyzeHealth = async (columns: { name: string; type: string }[], f
   const rowCount = Number(statsRow.total_rows);
 
   const columnHealth: Record<string, ColumnHealth> = {};
+
+  // Prepare outlier checks
+  const outlierChecks: string[] = [];
+  const outlierCols: string[] = [];
+
+  for (const col of columns) {
+    const colType = col.type.toUpperCase();
+    if (['DOUBLE', 'DECIMAL', 'INTEGER', 'BIGINT'].includes(colType)) {
+      const avg = Number(statsRow[`avg_${col.name}`]);
+      const std = Number(statsRow[`std_${col.name}`]);
+
+      if (std > 0) {
+        // Prepare bulk query part
+        outlierChecks.push(`SUM(CASE WHEN ABS("${col.name}" - ${avg}) > ${3 * std} THEN 1 ELSE 0 END) as "outlier_${col.name}"`);
+        outlierCols.push(col.name);
+      }
+    }
+  }
+
+  // Execute single outlier query if needed
+  let outlierResults: Record<string, number> = {};
+  if (outlierChecks.length > 0) {
+    const outlierSql = `SELECT ${outlierChecks.join(', ')} FROM current_dataset`;
+    const outlierRes = await query(outlierSql);
+    const row = outlierRes[0];
+
+    outlierCols.forEach(name => {
+      outlierResults[name] = Number(row[`outlier_${name}`]);
+    });
+  }
+
   let totalColumnScore = 0;
 
   for (const col of columns) {
@@ -71,13 +102,8 @@ export const analyzeHealth = async (columns: { name: string; type: string }[], f
 
     // Outlier Detection (Z-Score > 3)
     if (['DOUBLE', 'DECIMAL', 'INTEGER', 'BIGINT'].includes(colType)) {
-      const avg = Number(statsRow[`avg_${col.name}`]);
-      const std = Number(statsRow[`std_${col.name}`]);
-      
-      if (std > 0) {
-        const outlierSql = `SELECT COUNT(*) as cnt FROM current_dataset WHERE ABS("${col.name}" - ${avg}) > ${3 * std}`;
-        const outlierRes = await query(outlierSql);
-        outlierCount = Number(outlierRes[0].cnt);
+      if (outlierResults[col.name] !== undefined) {
+        outlierCount = outlierResults[col.name];
         if (outlierCount > 0) {
           score -= Math.min(outlierCount, 10);
           issues.warning.push(`Colonne "${col.name}" : ${outlierCount} valeurs aberrantes détectées (Z-Score > 3).`);
