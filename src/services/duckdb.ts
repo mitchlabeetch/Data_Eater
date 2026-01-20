@@ -69,6 +69,12 @@ const isZipFile = async (file: File): Promise<boolean> => {
     return bytes[0] === 0x50 && bytes[1] === 0x4B && bytes[2] === 0x03 && bytes[3] === 0x04;
 };
 
+// Security helper: Sanitize filenames to prevent SQL injection in read_csv calls
+export const sanitizeFilename = (name: string): string => {
+    // Keep only alphanumeric chars, dots, dashes, and underscores
+    return name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+};
+
 export const registerFile = async (file: File): Promise<string> => {
     const { db } = getDB();
     if (!db) throw new Error("DB not ready");
@@ -94,14 +100,16 @@ export const registerFile = async (file: File): Promise<string> => {
       const csvBuffer = await workbook.csv.writeBuffer();
       const blob = new Blob([csvBuffer], { type: 'text/csv' });
       
-      const tempName = `converted_${file.name.replace(/\s/g, '_')}.csv`;
+      // Use sanitized name
+      const tempName = `converted_${sanitizeFilename(file.name)}.csv`;
       
       // Register the Blob directly, avoiding string allocation
       await db.registerFileHandle(tempName, blob, duckdb.DuckDBDataProtocol.BROWSER_FILEREADER, true);
       return tempName;
     } else {
-      await db.registerFileHandle(file.name, file, duckdb.DuckDBDataProtocol.BROWSER_FILEREADER, true);
-      return file.name;
+      const safeName = sanitizeFilename(file.name);
+      await db.registerFileHandle(safeName, file, duckdb.DuckDBDataProtocol.BROWSER_FILEREADER, true);
+      return safeName;
     }
 };
 
