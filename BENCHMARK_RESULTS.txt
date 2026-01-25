@@ -14,3 +14,5 @@ Additional Benefits:
 - Reduces React state updates and re-renders from 10+ (N/200) to 1.
 - Reduces `executeMutation` side effects (stat calculation, duplicate checks, session persistence) from 10+ to 1.
 - Total end-to-end user perceived latency improvement is likely >10x due to removing repeated overheads.
+Baseline (Sync localStorage): 32.16ms blocking
+Improvement (Async localforage): ~80ms total, 0ms blocking

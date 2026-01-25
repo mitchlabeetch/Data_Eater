@@ -4,7 +4,7 @@ const API_BASE = 'https://data.geopf.fr/geocodage';
 
 export const searchAddress = async (query: string): Promise<any | null> => {
   // Check Cache
-  const cachedResult = getCache<any>(query);
+  const cachedResult = await getCache<any>(query);
   if (cachedResult) {
     return cachedResult;
   }
@@ -23,7 +23,7 @@ export const searchAddress = async (query: string): Promise<any | null> => {
     const bestMatch = data.features && data.features.length > 0 ? data.features[0] : null;
 
     // Cache result
-    setCache(query, bestMatch);
+    await setCache(query, bestMatch);
     
     return bestMatch;
   } catch (e) {
