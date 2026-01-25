@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, FileOutput, Save, Settings, AlertCircle } from 'lucide-react';
-import { ExportOptions, DEFAULT_EXPORT_OPTIONS, PRESETS, generateExport } from '../services/exportService';
+import { ExportOptions, DEFAULT_EXPORT_OPTIONS, PRESETS, generateExport, exportFromDB } from '../services/exportService';
 import { ExportPreview } from './ExportPreview';
 import { useDataStore } from '../stores/dataStore';
 import clsx from 'clsx';
@@ -27,12 +27,27 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => {
 
   const handleExport = async () => {
     setIsExporting(true);
-    // Fetch ALL rows for export (not just the view)
-    const allRows = await fetchRows(1000000); // 1M limit for V1
-    await generateExport(allRows, columns, options);
-    markExported(); // Mark as safe
-    setIsExporting(false);
-    onClose();
+
+    try {
+      if (['csv', 'json', 'parquet'].includes(options.format)) {
+        // Use optimized path for supported formats (Streaming / COPY)
+        // Construct SQL to ensure column order matches the application state
+        const columnsSql = columns.map(c => `"${c.name}"`).join(', ');
+        await exportFromDB(`SELECT ${columnsSql} FROM current_dataset`, options);
+      } else {
+        // Fallback for XLSX and legacy formats (Requires loading rows into memory)
+        // Fetch ALL rows for export (not just the view)
+        const allRows = await fetchRows(1000000); // 1M limit for V1
+        await generateExport(allRows, columns, options);
+      }
+
+      markExported(); // Mark as safe
+      onClose();
+    } catch (error) {
+      console.error("Export failed", error);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const applyPreset = (key: string) => {

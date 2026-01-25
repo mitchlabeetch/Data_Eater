@@ -55,6 +55,70 @@ export const PRESETS: Record<string, ExportOptions> = {
   }
 };
 
+export const exportFromDB = async (sql: string, options: ExportOptions) => {
+  const { filename, format, encoding, delimiter, includeHeaders } = options;
+  const { db, conn } = getDB();
+  if (!db || !conn) throw new Error("Database not ready");
+
+  if (format === 'pbip_theme') {
+      exportPowerBITheme(`${filename}.json`);
+      return;
+  }
+
+  // Parquet
+  if (format === 'parquet') {
+     const fullFilename = `${filename}.parquet`;
+     const tempFile = 'export_internal.parquet';
+     await conn.query(`COPY (${sql}) TO '${tempFile}' (FORMAT PARQUET)`);
+     const buffer = await db.copyFileToBuffer(tempFile);
+     const blob = new Blob([buffer], { type: 'application/octet-stream' });
+     triggerDownload(blob, fullFilename);
+     await db.dropFile(tempFile);
+     return;
+  }
+
+  // JSON
+  if (format === 'json') {
+     const fullFilename = `${filename}.json`;
+     const tempFile = 'export_internal.json';
+     await conn.query(`COPY (${sql}) TO '${tempFile}' (FORMAT JSON, ARRAY TRUE)`);
+     const buffer = await db.copyFileToBuffer(tempFile);
+     const blob = new Blob([buffer], { type: 'application/json' });
+     triggerDownload(blob, fullFilename);
+     await db.dropFile(tempFile);
+     return;
+  }
+
+  // CSV
+  if (format === 'csv') {
+     const fullFilename = `${filename}.csv`;
+     const tempFile = 'export_internal.csv';
+     const headerParam = includeHeaders ? 'HEADER, ' : '';
+     // Ensure delimiter is safe
+     await conn.query(`COPY (${sql}) TO '${tempFile}' (${headerParam}DELIMITER '${delimiter}')`);
+
+     const buffer = await db.copyFileToBuffer(tempFile); // Uint8Array
+     await db.dropFile(tempFile);
+
+     let blob: Blob;
+     if (encoding === 'windows-1252') {
+         // Convert UTF-8 buffer to Windows-1252
+         const str = new TextDecoder().decode(buffer);
+         const winBuffer = iconv.encode(str, 'win1252');
+         blob = new Blob([winBuffer], { type: 'text/csv;charset=windows-1252' });
+     } else {
+         // UTF-8 with BOM
+         const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+         blob = new Blob([bom, buffer], { type: 'text/csv;charset=utf-8' });
+     }
+     triggerDownload(blob, fullFilename);
+     return;
+  }
+
+  // Fallback for others if any (XLSX not supported here)
+  throw new Error(`Format ${format} not supported in exportFromDB`);
+};
+
 export const generateExport = async (rows: any[], columns: { name: string }[], options: ExportOptions) => {
   const { filename, format, encoding, delimiter, includeHeaders } = options;
   
