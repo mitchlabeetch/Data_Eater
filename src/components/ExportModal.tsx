@@ -27,9 +27,25 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => {
 
   const handleExport = async () => {
     setIsExporting(true);
-    // Fetch ALL rows for export (not just the view)
-    const allRows = await fetchRows(1000000); // 1M limit for V1
-    await generateExport(allRows, columns, options);
+
+    // Optimization: Skip fetching rows if we can export directly from DuckDB
+    // Conditions:
+    // 1. Format is parquet or json (DuckDB handles these natively)
+    // 2. Format is csv AND encoding is utf-8 (DuckDB COPY outputs UTF-8)
+    const canUseDirectExport =
+      options.format === 'parquet' ||
+      options.format === 'json' ||
+      (options.format === 'csv' && options.encoding === 'utf-8');
+
+    if (canUseDirectExport) {
+      await generateExport(null, columns, { ...options, tableName: 'current_dataset' });
+    } else {
+      // Fallback for Excel or custom encodings (e.g. windows-1252)
+      // Fetch ALL rows for export (not just the view)
+      const allRows = await fetchRows(1000000); // 1M limit for V1
+      await generateExport(allRows, columns, options);
+    }
+
     markExported(); // Mark as safe
     setIsExporting(false);
     onClose();
