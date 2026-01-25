@@ -1,5 +1,6 @@
-const API_URL = import.meta.env.VITE_CLOUD_LLM_API_URL || 'https://api.openai.com/v1/chat/completions'; 
-const API_KEY = import.meta.env.VITE_CLOUD_LLM_API_KEY || '';
+const env = import.meta.env || {};
+const API_URL = env.VITE_CLOUD_LLM_API_URL || 'https://api.openai.com/v1/chat/completions';
+const API_KEY = env.VITE_CLOUD_LLM_API_KEY || '';
 
 export const processBatch = async (
   query: string, 
@@ -87,16 +88,38 @@ export const runSmartQuery = async (
 ): Promise<any[]> => {
   const CHUNK_SIZE = 500;
   const totalChunks = Math.ceil(fullData.length / CHUNK_SIZE);
-  let processedData: any[] = [];
+  const results: any[][] = new Array(totalChunks);
+
+  const concurrencyLimit = 4;
+  const processing = new Set<Promise<void>>();
+  let completedChunks = 0;
+
+  const processChunk = async (index: number, chunk: any[]) => {
+    try {
+      const result = await processBatch(userQuery, chunk, "");
+      results[index] = result;
+    } finally {
+      completedChunks++;
+      onProgress(Math.round((completedChunks / totalChunks) * 100));
+    }
+  };
 
   for (let i = 0; i < totalChunks; i++) {
     const chunk = fullData.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
     
-    const result = await processBatch(userQuery, chunk, "");
-    processedData.push(...result);
-    
-    onProgress(Math.round(((i + 1) / totalChunks) * 100));
+    if (processing.size >= concurrencyLimit) {
+      await Promise.race(processing);
+    }
+
+    const p = processChunk(i, chunk);
+    const wrapper = p.then(() => {
+      processing.delete(wrapper);
+    });
+    processing.add(wrapper);
   }
 
-  return processedData;
+  await Promise.all(processing);
+
+  // Flatten results while filtering out any undefined slots (safety check)
+  return results.flat().filter(item => item !== undefined);
 };
