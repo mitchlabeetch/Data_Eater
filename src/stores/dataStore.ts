@@ -100,6 +100,37 @@ const persistSession = async (history: any[], fileMeta: any) => {
   ]);
 };
 
+const getRelevantColumns = (columns: Column[], query: string): Column[] => {
+  const q = query.trim().toLowerCase();
+  const isBoolean = q.length > 0 && ('true'.includes(q) || 'false'.includes(q));
+  const hasNumericChar = /[\d\.\,\-]/.test(q);
+  const hasDateChar = /[\d\-\:\/]/.test(q);
+
+  return columns.filter(col => {
+    const type = col.type.toUpperCase();
+
+    // 1. Text types: Always search
+    if (['VARCHAR', 'TEXT', 'STRING', 'CHAR', 'BPCHAR', 'UUID', 'JSON'].some(t => type.includes(t))) return true;
+
+    // 2. Numeric types
+    if (hasNumericChar) {
+      if (['INT', 'DOUBLE', 'FLOAT', 'DECIMAL', 'REAL', 'NUMERIC'].some(t => type.includes(t))) return true;
+    }
+
+    // 3. Date/Time types
+    if (hasDateChar) {
+      if (['DATE', 'TIME', 'TIMESTAMP', 'INTERVAL'].some(t => type.includes(t))) return true;
+    }
+
+    // 4. Boolean types
+    if (isBoolean) {
+      if (['BOOL'].some(t => type.includes(t))) return true;
+    }
+
+    return false;
+  });
+};
+
 export const useDataStore = create<DataStore>((set, get) => ({
   isReady: false,
   isLoading: false,
@@ -137,10 +168,16 @@ export const useDataStore = create<DataStore>((set, get) => ({
 
       if (state.searchQuery.trim()) {
         const q = state.searchQuery.replace(/'/g, "''");
-        const conditions = state.columns
-          .map(col => `CAST("${col.name}" AS VARCHAR) ILIKE '%${q}%'`)
-          .join(' OR ');
-        clauses.push(`(${conditions})`);
+        const relevantColumns = getRelevantColumns(state.columns, state.searchQuery);
+
+        if (relevantColumns.length > 0) {
+          const conditions = relevantColumns
+            .map(col => `CAST("${col.name}" AS VARCHAR) ILIKE '%${q}%'`)
+            .join(' OR ');
+          clauses.push(`(${conditions})`);
+        } else {
+          clauses.push('1=0');
+        }
       }
 
       // Rules Engine
