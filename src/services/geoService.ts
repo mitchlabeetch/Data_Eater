@@ -55,18 +55,18 @@ export const batchGeocode = async (
   onProgress: (done: number, total: number) => void
 ): Promise<Map<string, any>> => {
   const results = new Map<string, any>();
-  const total = queries.length;
+  const uniqueQueries = [...new Set(queries)];
+  const total = uniqueQueries.length;
   let done = 0;
 
   // Process in chunks to respect rate limit
   // 40 requests per second max
   const CHUNK_SIZE = 40;
   
-  for (let i = 0; i < queries.length; i += CHUNK_SIZE) {
-    const chunk = queries.slice(i, i + CHUNK_SIZE);
-    const uniqueChunk = [...new Set(chunk)];
+  for (let i = 0; i < uniqueQueries.length; i += CHUNK_SIZE) {
+    const chunk = uniqueQueries.slice(i, i + CHUNK_SIZE);
     
-    const promises = uniqueChunk.map(async (q) => {
+    const promises = chunk.map(async (q) => {
       const res = await searchAddress(q);
       if (res) results.set(q, res);
     });
@@ -76,7 +76,7 @@ export const batchGeocode = async (
     onProgress(done, total);
     
     // Wait 1 second before next chunk to respect 50 req/s limit
-    if (i + CHUNK_SIZE < queries.length) {
+    if (i + CHUNK_SIZE < uniqueQueries.length) {
       await new Promise(resolve => setTimeout(resolve, 1100));
     }
   }
