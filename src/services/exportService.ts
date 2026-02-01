@@ -72,7 +72,7 @@ export const generateExport = async (rows: any[], columns: { name: string }[], o
   } else if (format === 'parquet') {
     await exportParquet(fullFilename);
   } else {
-    exportCSV(rows, columns, fullFilename, encoding, delimiter, includeHeaders);
+    await exportCSV(rows, columns, fullFilename, encoding, delimiter, includeHeaders);
   }
 };
 
@@ -150,7 +150,7 @@ const exportJSON = (rows: any[], filename: string) => {
   triggerDownload(blob, filename);
 };
 
-const exportCSV = (
+const exportCSV = async (
   rows: any[], 
   columns: { name: string }[], 
   filename: string, 
@@ -158,29 +158,59 @@ const exportCSV = (
   delimiter: string,
   includeHeaders: boolean
 ) => {
-  // 1. Build CSV String
-  const headerRow = columns.map(c => `"${c.name}"`).join(delimiter);
-  const dataRows = rows.map(row => {
-    return columns.map(col => {
-      const val = row[col.name];
-      const strVal = val === null || val === undefined ? '' : String(val);
-      // Escape quotes: simple regex for global replacement
-      return `"${strVal.split('"').join('""')}"`;
-    }).join(delimiter);
-  });
+  const CHUNK_SIZE = 2000;
+  const chunks: (string | Uint8Array | Buffer)[] = [];
 
-  const csvContent = (includeHeaders ? [headerRow, ...dataRows] : dataRows).join('\n');
+  // 1. Header
+  if (includeHeaders) {
+    const headerRow = columns.map(c => `"${c.name}"`).join(delimiter);
+    if (encoding === 'windows-1252') {
+       chunks.push(iconv.encode(headerRow, 'win1252'));
+    } else {
+       chunks.push(headerRow);
+    }
+  }
 
-  // 2. Handle Encoding
+  // 2. Data Rows (Chunked)
+  for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+    const chunkRows = rows.slice(i, i + CHUNK_SIZE);
+
+    const chunkStr = chunkRows.map(row => {
+      return columns.map(col => {
+        const val = row[col.name];
+        const strVal = val === null || val === undefined ? '' : String(val);
+        // Escape quotes: simple regex for global replacement
+        return `"${strVal.split('"').join('""')}"`;
+      }).join(delimiter);
+    }).join('\n');
+
+    // Add newline separator if needed
+    if (chunks.length > 0) {
+        if (encoding === 'windows-1252') {
+            chunks.push(iconv.encode('\n', 'win1252'));
+        } else {
+            chunks.push('\n');
+        }
+    }
+
+    if (encoding === 'windows-1252') {
+       chunks.push(iconv.encode(chunkStr, 'win1252'));
+    } else {
+       chunks.push(chunkStr);
+    }
+
+    // Yield to event loop
+    await new Promise(resolve => setTimeout(resolve, 0));
+  }
+
+  // 3. Create Blob
   let blob: Blob;
   if (encoding === 'windows-1252') {
-    // Use iconv-lite to encode
-    const buffer = iconv.encode(csvContent, 'win1252');
-    blob = new Blob([buffer], { type: 'text/csv;charset=windows-1252' });
+    blob = new Blob(chunks, { type: 'text/csv;charset=windows-1252' });
   } else {
     // UTF-8 with BOM for Excel compatibility
     const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
-    blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8' });
+    blob = new Blob([bom, ...chunks], { type: 'text/csv;charset=utf-8' });
   }
 
   triggerDownload(blob, filename);
