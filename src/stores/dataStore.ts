@@ -6,6 +6,7 @@ import { useErrorStore } from './errorStore';
 import { useViewStore } from './viewStore';
 import { MASCOT_STATES } from '../lib/constants';
 import { analyzeHealth, GlobalHealthReport } from '../services/healthService';
+import { getRelevantColumns } from '../lib/searchUtils';
 import localforage from 'localforage';
 
 interface Column {
@@ -137,10 +138,16 @@ export const useDataStore = create<DataStore>((set, get) => ({
 
       if (state.searchQuery.trim()) {
         const q = state.searchQuery.replace(/'/g, "''");
-        const conditions = state.columns
+        const relevantCols = getRelevantColumns(state.columns, state.searchQuery);
+        const conditions = relevantCols
           .map(col => `CAST("${col.name}" AS VARCHAR) ILIKE '%${q}%'`)
           .join(' OR ');
-        clauses.push(`(${conditions})`);
+
+        if (conditions.length > 0) {
+          clauses.push(`(${conditions})`);
+        } else {
+          clauses.push(`(1=0)`);
+        }
       }
 
       // Rules Engine

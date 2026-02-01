@@ -1,0 +1,80 @@
+
+const columns = [
+  { name: 'id', type: 'INTEGER' },
+  { name: 'email', type: 'VARCHAR' },
+  { name: 'is_active', type: 'BOOLEAN' },
+  { name: 'created_at', type: 'TIMESTAMP' },
+  { name: 'score', type: 'DOUBLE' },
+  { name: 'description', type: 'TEXT' },
+  { name: 'metadata', type: 'VARCHAR' }
+];
+
+// Original Logic
+function generateOriginal(q, cols) {
+  const conditions = cols
+    .map(col => `CAST("${col.name}" AS VARCHAR) ILIKE '%${q}%'`)
+    .join(' OR ');
+  return `(${conditions})`;
+}
+
+// Proposed Logic (simplified for benchmark)
+function generateOptimized(q, cols) {
+  const relevant = cols.filter(col => {
+    const type = col.type.toUpperCase();
+
+    // Numeric
+    if (['INTEGER', 'BIGINT', 'DOUBLE', 'DECIMAL', 'FLOAT'].includes(type)) {
+      return /\d/.test(q);
+    }
+
+    // Boolean
+    if (['BOOLEAN', 'BOOL'].includes(type)) {
+      const lower = q.toLowerCase();
+      return "true".includes(lower) || "false".includes(lower);
+    }
+
+    // Date
+    if (['DATE', 'TIMESTAMP', 'TIME'].includes(type)) {
+      return /[\d\-\/\:\s]/.test(q);
+    }
+
+    return true; // Text/Other
+  });
+
+  const conditions = relevant
+    .map(col => `CAST("${col.name}" AS VARCHAR) ILIKE '%${q}%'`)
+    .join(' OR ');
+  return `(${conditions})`;
+}
+
+const scenarios = [
+  { name: "Text Search", query: "alice" },
+  { name: "Numeric Search", query: "42" },
+  { name: "Boolean Search", query: "tru" },
+  { name: "Complex Text", query: "test-data" }
+];
+
+console.log("--- Search Query Benchmark ---");
+console.log(`Total Columns: ${columns.length} (Integer, Varchar, Boolean, Timestamp, Double, Text, Varchar)`);
+
+scenarios.forEach(s => {
+  const original = generateOriginal(s.query, columns);
+  const optimized = generateOptimized(s.query, columns);
+
+  const originalClauses = original.split(' OR ').length;
+  const optimizedClauses = optimized === '()' ? 0 : optimized.split(' OR ').length;
+
+  const reduction = originalClauses - optimizedClauses;
+  const percent = ((reduction / originalClauses) * 100).toFixed(1);
+
+  console.log(`\nScenario: ${s.name} ("${s.query}")`);
+  console.log(`  Original Clauses:  ${originalClauses}`);
+  console.log(`  Optimized Clauses: ${optimizedClauses}`);
+  console.log(`  Reduction:         ${reduction} clauses (-${percent}%)`);
+
+  if (optimizedClauses < originalClauses) {
+      console.log(`  ✅ Optimized SQL shorter/faster`);
+  } else {
+      console.log(`  ⚠️ No reduction`);
+  }
+});
