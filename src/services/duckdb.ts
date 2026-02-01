@@ -4,6 +4,7 @@ import mvp_worker from '@duckdb/duckdb-wasm/dist/duckdb-browser-mvp.worker.js?ur
 import duckdb_eh from '@duckdb/duckdb-wasm/dist/duckdb-eh.wasm?url';
 import eh_worker from '@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.js?url';
 import { sniffFile } from '../lib/sniffer';
+import { LazyArrowResult } from '../lib/LazyArrowResult';
 
 const MANUAL_BUNDLES: duckdb.DuckDBBundles = {
     mvp: {
@@ -57,7 +58,9 @@ export const query = async (sql: string) => {
     if (!conn) throw new Error("Connection lost");
     
     const result = await conn.query(sql);
-    return result.toArray();
+    // Return LazyArrowResult wrapped as any[] to satisfy consumers expecting an array
+    // This avoids O(N) allocation of the result array proxy
+    return new LazyArrowResult(result) as unknown as any[];
 };
 
 // Helper to check for magic bytes (Zip signature: PK\x03\x04)
