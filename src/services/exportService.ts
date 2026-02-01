@@ -1,5 +1,4 @@
 import ExcelJS from 'exceljs';
-import iconv from 'iconv-lite';
 import { Buffer } from 'buffer';
 import { getDB } from './duckdb';
 
@@ -243,60 +242,34 @@ const exportCSV = async (
   delimiter: string,
   includeHeaders: boolean
 ) => {
-  const CHUNK_SIZE = 2000;
-  const chunks: (string | Uint8Array | Buffer)[] = [];
+  return new Promise<void>((resolve, reject) => {
+    const worker = new Worker(new URL('../workers/csvExportWorker.ts', import.meta.url), {
+      type: 'module',
+    });
 
-  // 1. Header
-  if (includeHeaders) {
-    const headerRow = columns.map(c => `"${c.name}"`).join(delimiter);
-    if (encoding === 'windows-1252') {
-       chunks.push(iconv.encode(headerRow, 'win1252'));
-    } else {
-       chunks.push(headerRow);
-    }
-  }
+    worker.onmessage = (e) => {
+      const { status, blob, error } = e.data;
+      if (status === 'success') {
+        triggerDownload(blob, filename);
+        worker.terminate();
+        resolve();
+      } else {
+        worker.terminate();
+        reject(new Error(error));
+      }
+    };
 
-  // 2. Data Rows (Chunked)
-  for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
-    const chunkRows = rows.slice(i, i + CHUNK_SIZE);
+    worker.onerror = (e) => {
+      worker.terminate();
+      reject(e);
+    };
 
-    const chunkStr = chunkRows.map(row => {
-      return columns.map(col => {
-        const val = row[col.name];
-        const strVal = val === null || val === undefined ? '' : String(val);
-        // Escape quotes: simple regex for global replacement
-        return `"${strVal.split('"').join('""')}"`;
-      }).join(delimiter);
-    }).join('\n');
-
-    // Add newline separator if needed
-    if (chunks.length > 0) {
-        if (encoding === 'windows-1252') {
-            chunks.push(iconv.encode('\n', 'win1252'));
-        } else {
-            chunks.push('\n');
-        }
-    }
-
-    if (encoding === 'windows-1252') {
-       chunks.push(iconv.encode(chunkStr, 'win1252'));
-    } else {
-       chunks.push(chunkStr);
-    }
-
-    // Yield to event loop
-    await new Promise(resolve => setTimeout(resolve, 0));
-  }
-
-  // 3. Create Blob
-  let blob: Blob;
-  if (encoding === 'windows-1252') {
-    blob = new Blob(chunks, { type: 'text/csv;charset=windows-1252' });
-  } else {
-    // UTF-8 with BOM for Excel compatibility
-    const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
-    blob = new Blob([bom, ...chunks], { type: 'text/csv;charset=utf-8' });
-  }
-
-  triggerDownload(blob, filename);
+    worker.postMessage({
+      rows,
+      columns,
+      delimiter,
+      encoding,
+      includeHeaders,
+    });
+  });
 };
