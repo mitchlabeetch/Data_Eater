@@ -14,6 +14,7 @@ export interface ExportOptions {
   encoding: 'utf-8' | 'windows-1252';
   delimiter: ',' | ';' | '\t';
   includeHeaders: boolean;
+  tableName?: string; // For direct DB export
 }
 
 export const DEFAULT_EXPORT_OPTIONS: ExportOptions = {
@@ -55,8 +56,8 @@ export const PRESETS: Record<string, ExportOptions> = {
   }
 };
 
-export const generateExport = async (rows: any[], columns: { name: string }[], options: ExportOptions) => {
-  const { filename, format, encoding, delimiter, includeHeaders } = options;
+export const generateExport = async (rows: any[] | null, columns: { name: string }[], options: ExportOptions) => {
+  const { filename, format, encoding, delimiter, includeHeaders, tableName } = options;
   
   if (format === 'pbip_theme') {
     exportPowerBITheme(`${filename}.json`);
@@ -65,14 +66,36 @@ export const generateExport = async (rows: any[], columns: { name: string }[], o
 
   const fullFilename = `${filename}.${format}`;
 
+  // Priority: Direct DB Export (Zero-Copy / Low Memory) when tableName is provided
+  if (tableName) {
+    if (format === 'parquet') {
+      await exportParquetFromDB(fullFilename, tableName);
+      return;
+    }
+    // Only support CSV from DB if UTF-8 (DuckDB COPY outputs UTF-8)
+    if (format === 'csv' && encoding === 'utf-8') {
+      await exportCSVFromDB(tableName, columns, fullFilename, delimiter, includeHeaders);
+      return;
+    }
+    // JSON from DB
+    if (format === 'json') {
+      await exportJSONFromDB(tableName, fullFilename);
+      return;
+    }
+  }
+
+  // Fallback: JS-based Export (requires rows)
+  const safeRows = rows || [];
+
   if (format === 'xlsx') {
-    await exportExcel(rows, columns, fullFilename);
+    await exportExcel(safeRows, columns, fullFilename);
   } else if (format === 'json') {
-    exportJSON(rows, fullFilename);
+    exportJSON(safeRows, fullFilename);
   } else if (format === 'parquet') {
-    await exportParquet(fullFilename);
+    // If no tableName but format is parquet, use current_dataset
+    await exportParquetFromDB(fullFilename, 'current_dataset');
   } else {
-    exportCSV(rows, columns, fullFilename, encoding, delimiter, includeHeaders);
+    await exportCSV(safeRows, columns, fullFilename, encoding, delimiter, includeHeaders);
   }
 };
 
@@ -114,18 +137,71 @@ const exportPowerBITheme = (filename: string) => {
   triggerDownload(blob, filename);
 };
 
-const exportParquet = async (filename: string) => {
+const exportParquetFromDB = async (filename: string, tableName: string) => {
   const { db, conn } = getDB();
   if (!db || !conn) return;
 
-  const tempFile = 'export_internal.parquet';
-  await conn.query(`COPY current_dataset TO '${tempFile}' (FORMAT PARQUET)`);
+  const tempFile = `export_${crypto.randomUUID()}.parquet`;
+  try {
+    await conn.query(`COPY ${tableName} TO '${tempFile}' (FORMAT PARQUET)`);
+    const buffer = await db.copyFileToBuffer(tempFile);
+    const blob = new Blob([buffer], { type: 'application/octet-stream' });
+    triggerDownload(blob, filename);
+  } finally {
+    await db.dropFile(tempFile).catch(() => {});
+  }
+};
+
+const exportCSVFromDB = async (
+  tableName: string,
+  columns: { name: string }[],
+  filename: string,
+  delimiter: string,
+  includeHeaders: boolean
+) => {
+  const { db, conn } = getDB();
+  if (!db || !conn) return;
+
+  const tempFile = `export_${crypto.randomUUID()}.csv`;
   
-  const buffer = await db.copyFileToBuffer(tempFile);
-  const blob = new Blob([buffer], { type: 'application/octet-stream' });
-  triggerDownload(blob, filename);
-  
-  await db.dropFile(tempFile);
+  // Construct SELECT to ensure column order
+  const colsSelect = columns.map(c => `"${c.name}"`).join(', ');
+
+  try {
+    const optionsParts = [`FORMAT CSV`, `DELIMITER '${delimiter}'`];
+    if (includeHeaders) optionsParts.push('HEADER');
+    const optionsStr = optionsParts.join(', ');
+
+    // DuckDB COPY statement
+    await conn.query(`
+      COPY (SELECT ${colsSelect} FROM ${tableName})
+      TO '${tempFile}'
+      (${optionsStr})
+    `);
+
+    const buffer = await db.copyFileToBuffer(tempFile);
+    // DuckDB exports UTF-8. Add BOM for Excel compatibility.
+    const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+    const blob = new Blob([bom, buffer], { type: 'text/csv;charset=utf-8' });
+    triggerDownload(blob, filename);
+  } finally {
+    await db.dropFile(tempFile).catch(() => {});
+  }
+};
+
+const exportJSONFromDB = async (tableName: string, filename: string) => {
+  const { db, conn } = getDB();
+  if (!db || !conn) return;
+
+  const tempFile = `export_${crypto.randomUUID()}.json`;
+  try {
+    await conn.query(`COPY ${tableName} TO '${tempFile}' (FORMAT JSON, ARRAY true)`);
+    const buffer = await db.copyFileToBuffer(tempFile);
+    const blob = new Blob([buffer], { type: 'application/json' });
+    triggerDownload(blob, filename);
+  } finally {
+    await db.dropFile(tempFile).catch(() => {});
+  }
 };
 
 const exportExcel = async (rows: any[], columns: { name: string }[], filename: string) => {
@@ -135,8 +211,16 @@ const exportExcel = async (rows: any[], columns: { name: string }[], filename: s
   // Add Headers
   sheet.columns = columns.map(c => ({ header: c.name, key: c.name }));
 
-  // Add Rows
-  sheet.addRows(rows);
+  // Add Rows - Explicit mapping to handle potential Arrow Proxies
+  const plainRows = rows.map(row => {
+    const obj: any = {};
+    columns.forEach(col => {
+        obj[col.name] = row[col.name];
+    });
+    return obj;
+  });
+
+  sheet.addRows(plainRows);
 
   // Write
   const buffer = await workbook.xlsx.writeBuffer();
@@ -150,7 +234,7 @@ const exportJSON = (rows: any[], filename: string) => {
   triggerDownload(blob, filename);
 };
 
-const exportCSV = (
+const exportCSV = async (
   rows: any[], 
   columns: { name: string }[], 
   filename: string, 
@@ -158,29 +242,59 @@ const exportCSV = (
   delimiter: string,
   includeHeaders: boolean
 ) => {
-  // 1. Build CSV String
-  const headerRow = columns.map(c => `"${c.name}"`).join(delimiter);
-  const dataRows = rows.map(row => {
-    return columns.map(col => {
-      const val = row[col.name];
-      const strVal = val === null || val === undefined ? '' : String(val);
-      // Escape quotes: simple regex for global replacement
-      return `"${strVal.split('"').join('""')}"`;
-    }).join(delimiter);
-  });
+  const CHUNK_SIZE = 2000;
+  const chunks: (string | Uint8Array | Buffer)[] = [];
 
-  const csvContent = (includeHeaders ? [headerRow, ...dataRows] : dataRows).join('\n');
+  // 1. Header
+  if (includeHeaders) {
+    const headerRow = columns.map(c => `"${c.name}"`).join(delimiter);
+    if (encoding === 'windows-1252') {
+       chunks.push(iconv.encode(headerRow, 'win1252'));
+    } else {
+       chunks.push(headerRow);
+    }
+  }
 
-  // 2. Handle Encoding
+  // 2. Data Rows (Chunked)
+  for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+    const chunkRows = rows.slice(i, i + CHUNK_SIZE);
+
+    const chunkStr = chunkRows.map(row => {
+      return columns.map(col => {
+        const val = row[col.name];
+        const strVal = val === null || val === undefined ? '' : String(val);
+        // Escape quotes: simple regex for global replacement
+        return `"${strVal.split('"').join('""')}"`;
+      }).join(delimiter);
+    }).join('\n');
+
+    // Add newline separator if needed
+    if (chunks.length > 0) {
+        if (encoding === 'windows-1252') {
+            chunks.push(iconv.encode('\n', 'win1252'));
+        } else {
+            chunks.push('\n');
+        }
+    }
+
+    if (encoding === 'windows-1252') {
+       chunks.push(iconv.encode(chunkStr, 'win1252'));
+    } else {
+       chunks.push(chunkStr);
+    }
+
+    // Yield to event loop
+    await new Promise(resolve => setTimeout(resolve, 0));
+  }
+
+  // 3. Create Blob
   let blob: Blob;
   if (encoding === 'windows-1252') {
-    // Use iconv-lite to encode
-    const buffer = iconv.encode(csvContent, 'win1252');
-    blob = new Blob([buffer], { type: 'text/csv;charset=windows-1252' });
+    blob = new Blob(chunks, { type: 'text/csv;charset=windows-1252' });
   } else {
     // UTF-8 with BOM for Excel compatibility
     const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
-    blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8' });
+    blob = new Blob([bom, ...chunks], { type: 'text/csv;charset=utf-8' });
   }
 
   triggerDownload(blob, filename);

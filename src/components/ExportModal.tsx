@@ -27,12 +27,30 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => {
 
   const handleExport = async () => {
     setIsExporting(true);
-    // Fetch ALL rows for export (not just the view)
-    const allRows = await fetchRows(1000000); // 1M limit for V1
-    await generateExport(allRows, columns, options);
-    markExported(); // Mark as safe
-    setIsExporting(false);
-    onClose();
+    
+    try {
+      // Optimization: Use direct DB export when possible (Zero-Copy / Low Memory)
+      const canUseDirectExport =
+        options.format === 'parquet' ||
+        options.format === 'json' ||
+        (options.format === 'csv' && options.encoding === 'utf-8');
+
+      if (canUseDirectExport) {
+        await generateExport(null, columns, { ...options, tableName: 'current_dataset' });
+      } else {
+        // Fallback for Excel or custom encodings (e.g. windows-1252)
+        // Fetch ALL rows for export (not just the view)
+        const allRows = await fetchRows(1000000); // 1M limit for V1
+        await generateExport(allRows, columns, options);
+      }
+
+      markExported(); // Mark as safe
+      onClose();
+    } catch (error) {
+      console.error("Export failed", error);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const applyPreset = (key: string) => {
