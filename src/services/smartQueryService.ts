@@ -6,11 +6,16 @@ export const processBatch = async (
   dataBatch: any[], 
   _instructions: string
 ): Promise<any[]> => {
+  // Materialize batch if needed (handle Arrow Proxies)
+  const safeBatch = (dataBatch.length > 0 && typeof dataBatch[0].toJSON === 'function')
+    ? dataBatch.map(r => r.toJSON())
+    : dataBatch;
+
   if (!API_KEY) {
     // Mock Implementation if no key
     console.warn("No API Key found for Cloud LLM. Simulating response.");
     await new Promise(r => setTimeout(r, 1000));
-    return dataBatch.map(row => ({
+    return safeBatch.map(row => ({
       ...row,
       _llm_comment: `Processed (Simulation): ${query}`
     }));
@@ -19,8 +24,8 @@ export const processBatch = async (
   try {
     // 1. Convert Batch to CSV string for Prompt
     // Simple robust CSV conversion
-    const headers = Object.keys(dataBatch[0] || {}).join(',');
-    const rows = dataBatch.map(r => Object.values(r).map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const headers = Object.keys(safeBatch[0] || {}).join(',');
+    const rows = safeBatch.map(r => Object.values(r).map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
     const csvContent = `${headers}\n${rows}`;
 
     const systemPrompt = `

@@ -135,8 +135,16 @@ const exportExcel = async (rows: any[], columns: { name: string }[], filename: s
   // Add Headers
   sheet.columns = columns.map(c => ({ header: c.name, key: c.name }));
 
-  // Add Rows
-  sheet.addRows(rows);
+  // Add Rows - Explicit mapping to handle potential Arrow Proxies
+  const plainRows = rows.map(row => {
+    const obj: any = {};
+    columns.forEach(col => {
+        obj[col.name] = row[col.name];
+    });
+    return obj;
+  });
+
+  sheet.addRows(plainRows);
 
   // Write
   const buffer = await workbook.xlsx.writeBuffer();
