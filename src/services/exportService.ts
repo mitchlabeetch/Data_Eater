@@ -141,7 +141,8 @@ const exportParquetFromDB = async (filename: string, tableName: string) => {
   const { db, conn } = getDB();
   if (!db || !conn) return;
 
-  const tempFile = `export_${crypto.randomUUID()}.parquet`;
+  // Use a simple unique filename to avoid collisions
+  const tempFile = `export_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.parquet`;
   try {
     await conn.query(`COPY ${tableName} TO '${tempFile}' (FORMAT PARQUET)`);
     const buffer = await db.copyFileToBuffer(tempFile);
@@ -162,7 +163,7 @@ const exportCSVFromDB = async (
   const { db, conn } = getDB();
   if (!db || !conn) return;
 
-  const tempFile = `export_${crypto.randomUUID()}.csv`;
+  const tempFile = `export_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.csv`;
   
   // Construct SELECT to ensure column order
   const colsSelect = columns.map(c => `"${c.name}"`).join(', ');
@@ -193,7 +194,7 @@ const exportJSONFromDB = async (tableName: string, filename: string) => {
   const { db, conn } = getDB();
   if (!db || !conn) return;
 
-  const tempFile = `export_${crypto.randomUUID()}.json`;
+  const tempFile = `export_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.json`;
   try {
     await conn.query(`COPY ${tableName} TO '${tempFile}' (FORMAT JSON, ARRAY true)`);
     const buffer = await db.copyFileToBuffer(tempFile);

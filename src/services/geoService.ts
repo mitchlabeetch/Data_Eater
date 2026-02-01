@@ -68,10 +68,15 @@ export const batchGeocode = async (
   for (let i = 0; i < uniqueQueries.length; i += CHUNK_SIZE) {
     const chunk = uniqueQueries.slice(i, i + CHUNK_SIZE);
     
-    // Check if we need to hit the network
-    const hasNetworkRequest = await Promise.all(
-      chunk.map(async (q) => !(await getCache<any>(q)))
-    ).then(checks => checks.some(check => check));
+    // Check if any query in chunk will require network (cache miss)
+    let hasNetworkRequest = false;
+    for (const q of chunk) {
+      const cached = await getCache<any>(q);
+      if (!cached) {
+        hasNetworkRequest = true;
+        break; // Short-circuit on first cache miss
+      }
+    }
     
     const promises = chunk.map(async (q) => {
       const res = await searchAddress(q);

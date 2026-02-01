@@ -1,5 +1,14 @@
 import fuzzysort from 'fuzzysort';
 
+// Fuzzy clustering threshold configuration
+// MIN_THRESHOLD: Minimum similarity score required (0.6 = 60% match)
+// BASE_THRESHOLD: Starting threshold for short strings (0.95 = 95% match)
+// LENGTH_PENALTY: How much to relax threshold per character (0.01 per char)
+const MIN_THRESHOLD = 0.6;
+const BASE_THRESHOLD = 0.95;
+const LENGTH_PENALTY = 0.01;
+const MIN_QUALITY_SCORE = 0.5;
+
 self.onmessage = (e: MessageEvent<string[]>) => {
   try {
     const values = e.data;
@@ -20,14 +29,9 @@ self.onmessage = (e: MessageEvent<string[]>) => {
     sortedValues.forEach(val => {
       if (used.has(val)) return;
 
-      // Fix Threshold Logic for fuzzysort v3 (0..1 scores)
-      // Original code used negative thresholds (e.g., -200) which are incompatible with v3's 0..1 positive scores.
-      // Using negative thresholds with v3 would result in ineffective filtering (matching everything > -200, i.e., everything).
-      //
-      // We implement a dynamic positive threshold to respect the original intent:
-      // "Shorter strings need stricter matching (higher score), longer strings can be more lenient."
-      // Example: Length 5 -> 0.90, Length 20 -> 0.75. Min 0.6.
-      const dynamicThreshold = Math.max(0.6, 0.95 - (val.length * 0.01));
+      // Dynamic threshold: shorter strings need stricter matching
+      // Example: Length 5 -> 0.90, Length 20 -> 0.75, Min 0.6
+      const dynamicThreshold = Math.max(MIN_THRESHOLD, BASE_THRESHOLD - (val.length * LENGTH_PENALTY));
 
       const fuzzyResults = fuzzysort.go(val, sortedValues, { threshold: dynamicThreshold });
 
@@ -37,11 +41,8 @@ self.onmessage = (e: MessageEvent<string[]>) => {
           // Don't include self or already used items
           if (c === val || used.has(c)) return false;
 
-          // Secondary safety check to mimic original 'SIMILARITY_SCORE_THRESHOLD' intent.
-          // Original check was: score / max_len > -15.
-          // With v3 scores (0..1), we ensure a minimum absolute quality.
-          // Since we already used 'threshold' in go(), this is mostly redundant but ensures safety.
-          if (result.score < 0.5) return false;
+          // Ensure minimum quality score
+          if (result.score < MIN_QUALITY_SCORE) return false;
 
           return true;
         })

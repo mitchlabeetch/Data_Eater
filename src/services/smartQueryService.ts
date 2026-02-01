@@ -8,9 +8,14 @@ export const processBatch = async (
   _instructions: string
 ): Promise<any[]> => {
   // Materialize batch if needed (handle Arrow Proxies)
-  const safeBatch = (dataBatch.length > 0 && typeof dataBatch[0].toJSON === 'function')
-    ? dataBatch.map(r => r.toJSON())
-    : dataBatch;
+  // Check if this looks like Arrow data by testing first non-null element
+  let safeBatch = dataBatch;
+  if (dataBatch.length > 0) {
+    const firstNonNull = dataBatch.find(r => r != null);
+    if (firstNonNull && typeof firstNonNull.toJSON === 'function') {
+      safeBatch = dataBatch.map(r => r ? r.toJSON() : r);
+    }
+  }
 
   if (!API_KEY) {
     // Mock Implementation if no key

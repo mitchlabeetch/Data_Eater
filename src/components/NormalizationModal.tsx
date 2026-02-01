@@ -498,6 +498,17 @@ const FuzzyPanel: React.FC = () => {
   const [merges, setMerges] = useState<Record<string, string>>({}); 
   const [selectedClusters, setSelectedClusters] = useState<Set<string>>(new Set());
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const workerRef = React.useRef<Worker | null>(null);
+
+  // Cleanup worker on unmount
+  React.useEffect(() => {
+    return () => {
+      if (workerRef.current) {
+        workerRef.current.terminate();
+        workerRef.current = null;
+      }
+    };
+  }, []);
 
   const handleAnalyze = async () => {
     if (!targetCol) return;
@@ -507,7 +518,13 @@ const FuzzyPanel: React.FC = () => {
       const res = await queryResult(`SELECT DISTINCT "${targetCol}" as val FROM current_dataset`);
       const values = res.map((r: any) => String(r.val || '')).filter(Boolean);
 
+      // Terminate existing worker if any
+      if (workerRef.current) {
+        workerRef.current.terminate();
+      }
+
       const worker = new Worker(new URL('../workers/clusteringWorker.ts', import.meta.url), { type: 'module' });
+      workerRef.current = worker;
 
       worker.onmessage = (e) => {
         if (e.data.error) {
@@ -517,12 +534,14 @@ const FuzzyPanel: React.FC = () => {
         }
         setIsAnalyzing(false);
         worker.terminate();
+        workerRef.current = null;
       };
 
       worker.onerror = (e) => {
         console.error("Worker Error Event:", e);
         setIsAnalyzing(false);
         worker.terminate();
+        workerRef.current = null;
       };
 
       worker.postMessage(values);

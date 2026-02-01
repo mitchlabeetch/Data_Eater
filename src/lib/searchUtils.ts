@@ -15,10 +15,8 @@ export const getRelevantColumns = (columns: Column[], query: string): Column[] =
   const hasDigits = /\d/.test(q);
   const lowerQ = q.toLowerCase();
 
-  // Boolean heuristic: does the query match any part of "true" or "false"?
-  // Note: "e" matches both. "t" matches true. "f" matches false.
-  // We use strict inclusion check.
-  const isBooleanLike = "true".includes(lowerQ) || "false".includes(lowerQ);
+  // Boolean heuristic: does the query contain "true" or "false"?
+  const isBooleanLike = lowerQ.includes("true") || lowerQ.includes("false");
 
   return columns.filter(col => {
     const type = col.type.toUpperCase();
@@ -30,7 +28,6 @@ export const getRelevantColumns = (columns: Column[], query: string): Column[] =
 
     // 2. Numeric Types: Include only if query contains digits, or characters common in numbers (-, .)
     // Edge case: "Infinity", "NaN" are valid numeric values in text representation.
-    // If query matches them, we should include numeric columns.
     if (
       type.includes('INT') ||
       type.includes('DOUBLE') ||
@@ -40,7 +37,7 @@ export const getRelevantColumns = (columns: Column[], query: string): Column[] =
       type.includes('NUMERIC')
     ) {
       if (hasDigits || /[\-\.]/.test(q)) return true;
-      if ("infinity".includes(lowerQ) || "nan".includes(lowerQ)) return true;
+      if (lowerQ.includes("infinity") || lowerQ.includes("nan")) return true;
       return false;
     }
 
