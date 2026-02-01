@@ -66,6 +66,9 @@ export const batchGeocode = async (
     const chunk = queries.slice(i, i + CHUNK_SIZE);
     const uniqueChunk = [...new Set(chunk)];
     
+    // Check if we need to hit the network
+    const hasNetworkRequest = uniqueChunk.some(q => !getCache<any>(q));
+
     const promises = uniqueChunk.map(async (q) => {
       const res = await searchAddress(q);
       if (res) results.set(q, res);
@@ -76,7 +79,7 @@ export const batchGeocode = async (
     onProgress(done, total);
     
     // Wait 1 second before next chunk to respect 50 req/s limit
-    if (i + CHUNK_SIZE < queries.length) {
+    if (hasNetworkRequest && i + CHUNK_SIZE < queries.length) {
       await new Promise(resolve => setTimeout(resolve, 1100));
     }
   }
