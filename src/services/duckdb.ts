@@ -57,7 +57,7 @@ export const query = async (sql: string) => {
     if (!conn) throw new Error("Connection lost");
     
     const result = await conn.query(sql);
-    return result.toArray().map((row) => row.toJSON());
+    return result.toArray();
 };
 
 // Helper to check for magic bytes (Zip signature: PK\x03\x04)

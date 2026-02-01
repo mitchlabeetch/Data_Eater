@@ -1,16 +1,27 @@
-const API_URL = import.meta.env.VITE_CLOUD_LLM_API_URL || 'https://api.openai.com/v1/chat/completions'; 
-const API_KEY = import.meta.env.VITE_CLOUD_LLM_API_KEY || '';
+const env = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env : {} as any;
+const API_URL = env.VITE_CLOUD_LLM_API_URL || 'https://api.openai.com/v1/chat/completions';
+const API_KEY = env.VITE_CLOUD_LLM_API_KEY || '';
 
 export const processBatch = async (
   query: string, 
   dataBatch: any[], 
   _instructions: string
 ): Promise<any[]> => {
+  // Materialize batch if needed (handle Arrow Proxies)
+  // Check if this looks like Arrow data by testing first non-null element
+  let safeBatch = dataBatch;
+  if (dataBatch.length > 0) {
+    const firstNonNull = dataBatch.find(r => r != null);
+    if (firstNonNull && typeof firstNonNull.toJSON === 'function') {
+      safeBatch = dataBatch.map(r => r ? r.toJSON() : r);
+    }
+  }
+
   if (!API_KEY) {
     // Mock Implementation if no key
     console.warn("No API Key found for Cloud LLM. Simulating response.");
     await new Promise(r => setTimeout(r, 1000));
-    return dataBatch.map(row => ({
+    return safeBatch.map(row => ({
       ...row,
       _llm_comment: `Processed (Simulation): ${query}`
     }));
@@ -19,8 +30,8 @@ export const processBatch = async (
   try {
     // 1. Convert Batch to CSV string for Prompt
     // Simple robust CSV conversion
-    const headers = Object.keys(dataBatch[0] || {}).join(',');
-    const rows = dataBatch.map(r => Object.values(r).map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const headers = Object.keys(safeBatch[0] || {}).join(',');
+    const rows = safeBatch.map(r => Object.values(r).map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
     const csvContent = `${headers}\n${rows}`;
 
     const systemPrompt = `
@@ -87,15 +98,40 @@ export const runSmartQuery = async (
 ): Promise<any[]> => {
   const CHUNK_SIZE = 500;
   const totalChunks = Math.ceil(fullData.length / CHUNK_SIZE);
-  let processedData: any[] = [];
+  const allResults: any[][] = new Array(totalChunks);
+  const CONCURRENCY_LIMIT = 5;
+  const executing = new Set<Promise<void>>();
+
+  let completedChunks = 0;
 
   for (let i = 0; i < totalChunks; i++) {
     const chunk = fullData.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
     
-    const result = await processBatch(userQuery, chunk, "");
-    processedData.push(...result);
-    
-    onProgress(Math.round(((i + 1) / totalChunks) * 100));
+    const p = processBatch(userQuery, chunk, "").then((result) => {
+      allResults[i] = result;
+      completedChunks++;
+      onProgress(Math.round((completedChunks / totalChunks) * 100));
+    });
+
+    const wrapper = p.then(() => {
+      executing.delete(wrapper);
+    });
+
+    executing.add(wrapper);
+
+    if (executing.size >= CONCURRENCY_LIMIT) {
+      await Promise.race(executing);
+    }
+  }
+
+  await Promise.all(executing);
+
+  // Flatten results securely
+  const processedData: any[] = [];
+  for (const batch of allResults) {
+    if (batch) {
+      processedData.push(...batch);
+    }
   }
 
   return processedData;

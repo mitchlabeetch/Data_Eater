@@ -491,14 +491,6 @@ const GeoPanel: React.FC = () => {
   );
 };
 
-// Fuzzy matching configuration constants for similarity detection
-// FUZZY_THRESHOLD_BASE: The strictest threshold score (-200 means very similar matches only)
-// FUZZY_THRESHOLD_MULTIPLIER: Scales threshold by string length (5 * length allows longer strings more flexibility)
-// SIMILARITY_SCORE_THRESHOLD: Normalized similarity cutoff (-15 balances precision vs. recall)
-const FUZZY_THRESHOLD_BASE = -200;
-const FUZZY_THRESHOLD_MULTIPLIER = 5;
-const SIMILARITY_SCORE_THRESHOLD = -15;
-
 const FuzzyPanel: React.FC = () => {
   const { columns, selectedColumn, queryResult, executeMutation } = useDataStore();
   const [targetCol, setTargetCol] = useState(selectedColumn || '');
@@ -506,47 +498,57 @@ const FuzzyPanel: React.FC = () => {
   const [merges, setMerges] = useState<Record<string, string>>({}); 
   const [selectedClusters, setSelectedClusters] = useState<Set<string>>(new Set());
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const workerRef = React.useRef<Worker | null>(null);
+
+  // Cleanup worker on unmount
+  React.useEffect(() => {
+    return () => {
+      if (workerRef.current) {
+        workerRef.current.terminate();
+        workerRef.current = null;
+      }
+    };
+  }, []);
 
   const handleAnalyze = async () => {
     if (!targetCol) return;
     setIsAnalyzing(true);
 
-    const res = await queryResult(`SELECT DISTINCT "${targetCol}" as val FROM current_dataset`);
-    const values = res.map((r: any) => String(r.val || '')).filter(Boolean);
-    
-    const tempClusters: Array<{ center: string, candidates: string[] }> = [];
-    const used = new Set<string>();
+    try {
+      const res = await queryResult(`SELECT DISTINCT "${targetCol}" as val FROM current_dataset`);
+      const values = res.map((r: any) => String(r.val || '')).filter(Boolean);
 
-    // Sort by length descending to use longer strings as cluster centers
-    values.sort((a, b) => b.length - a.length);
-
-    values.forEach(val => {
-      if (used.has(val)) return;
-      
-      // Improved fuzzy matching with better threshold based on string length
-      // Shorter strings need stricter matching, longer strings can be more lenient
-      const dynamicThreshold = Math.max(FUZZY_THRESHOLD_BASE, -val.length * FUZZY_THRESHOLD_MULTIPLIER);
-      const fuzzyResults = fuzzysort.go(val, values, { threshold: dynamicThreshold });
-      
-      const candidates = fuzzyResults
-        .filter(result => {
-          const c = result.target;
-          if (c === val || used.has(c)) return false;
-          // Additional heuristic: check normalized score ratio
-          const similarity = result.score / Math.max(val.length, c.length);
-          return similarity > SIMILARITY_SCORE_THRESHOLD; // More refined similarity threshold
-        })
-        .map(result => result.target);
-      
-      if (candidates.length > 0) {
-        tempClusters.push({ center: val, candidates });
-        used.add(val);
-        candidates.forEach(c => used.add(c));
+      // Terminate existing worker if any
+      if (workerRef.current) {
+        workerRef.current.terminate();
       }
-    });
 
-    setClusters(tempClusters);
-    setIsAnalyzing(false);
+      const worker = new Worker(new URL('../workers/clusteringWorker.ts', import.meta.url), { type: 'module' });
+      workerRef.current = worker;
+
+      worker.onmessage = (e) => {
+        if (e.data.error) {
+          console.error("Worker Error:", e.data.error);
+        } else {
+          setClusters(e.data);
+        }
+        setIsAnalyzing(false);
+        worker.terminate();
+        workerRef.current = null;
+      };
+
+      worker.onerror = (e) => {
+        console.error("Worker Error Event:", e);
+        setIsAnalyzing(false);
+        worker.terminate();
+        workerRef.current = null;
+      };
+
+      worker.postMessage(values);
+    } catch (e) {
+      console.error(e);
+      setIsAnalyzing(false);
+    }
   };
 
   const handleMerge = async () => {

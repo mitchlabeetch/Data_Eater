@@ -1,18 +1,15 @@
 import L from 'leaflet';
 
-// Fix for default marker icons in Leaflet + Webpack/Vite
+// Configuration for default marker icons in Leaflet + Webpack/Vite
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerIconRetina from 'leaflet/dist/images/marker-icon-2x.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 
-const DefaultIcon = L.icon({
+// Prevents Leaflet from trying to detect the path automatically which fails in bundlers
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+
+L.Icon.Default.mergeOptions({
   iconUrl: markerIcon,
   iconRetinaUrl: markerIconRetina,
   shadowUrl: markerShadow,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
 });
-
-L.Marker.prototype.options.icon = DefaultIcon;
