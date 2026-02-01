@@ -15,8 +15,8 @@ export const getRelevantColumns = (columns: Column[], query: string): Column[] =
   const hasDigits = /\d/.test(q);
   const lowerQ = q.toLowerCase();
 
-  // Boolean heuristic: does the query contain "true" or "false"?
-  const isBooleanLike = lowerQ.includes("true") || lowerQ.includes("false");
+  // Boolean heuristic: does the query contain "true" or "false" or is a substring of them?
+  const isBooleanLike = lowerQ.includes("true") || lowerQ.includes("false") || "true".includes(lowerQ) || "false".includes(lowerQ);
 
   return columns.filter(col => {
     const type = col.type.toUpperCase();
