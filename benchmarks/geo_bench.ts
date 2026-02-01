@@ -47,7 +47,7 @@ async function runBenchmark() {
   // Generate a list of queries with duplicates
   const queries = [];
   for (let i = 0; i < 100; i++) {
-    queries.push('Paris'); // All duplicates
+    queries.push(`Paris ${i}`); // Unique queries to force multiple chunks
   }
 
   fetchCallCount = 0;
@@ -59,7 +59,15 @@ async function runBenchmark() {
 
   console.log(`Total Queries: ${queries.length}`);
   console.log(`Fetch Calls: ${fetchCallCount}`);
-  console.log(`Time Taken: ${(end - start).toFixed(2)}ms`);
+  console.log(`Time Taken (Cold): ${(end - start).toFixed(2)}ms`);
+
+  // Run again (Warm Cache)
+  fetchCallCount = 0;
+  const start2 = performance.now();
+  await batchGeocode(queries, (done, total) => {});
+  const end2 = performance.now();
+  console.log(`Fetch Calls (Warm): ${fetchCallCount}`);
+  console.log(`Time Taken (Warm): ${(end2 - start2).toFixed(2)}ms`);
 }
 
 runBenchmark();
