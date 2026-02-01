@@ -99,6 +99,7 @@ export const runSmartQuery = async (
   const CHUNK_SIZE = 500;
   const totalChunks = Math.ceil(fullData.length / CHUNK_SIZE);
   const allResults: any[][] = new Array(totalChunks);
+  // Process chunks in parallel with a concurrency limit to optimize throughput vs API limits
   const CONCURRENCY_LIMIT = 5;
   const executing = new Set<Promise<void>>();
 
