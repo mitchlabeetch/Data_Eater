@@ -1,6 +1,7 @@
 import L from 'leaflet';
 
-// Configuration for default marker icons in Leaflet + Webpack/Vite
+// Fix for default marker icons in Leaflet + Webpack/Vite:
+// Resolves 404 errors by overriding the default icon paths and disabling auto-detection
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerIconRetina from 'leaflet/dist/images/marker-icon-2x.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
