@@ -140,7 +140,12 @@ export const useDataStore = create<DataStore>((set, get) => ({
         const q = state.searchQuery.replace(/'/g, "''");
         const relevantCols = getRelevantColumns(state.columns, state.searchQuery);
         const conditions = relevantCols
-          .map(col => `CAST("${col.name}" AS VARCHAR) ILIKE '%${q}%'`)
+          .map(col => {
+            // Optimization: Avoid redundant CAST for text columns
+            const isText = /char|text|string/i.test(col.type);
+            if (isText) return `"${col.name}" ILIKE '%${q}%'`;
+            return `CAST("${col.name}" AS VARCHAR) ILIKE '%${q}%'`;
+          })
           .join(' OR ');
 
         if (conditions.length > 0) {
