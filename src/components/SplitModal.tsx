@@ -8,7 +8,7 @@ interface SplitModalProps {
 }
 
 export const SplitModal: React.FC<SplitModalProps> = ({ isOpen, onClose }) => {
-  const { selectedColumn, fetchRows, executeMutation } = useDataStore();
+  const { selectedColumn, fetchRows, executeMutation, columns } = useDataStore();
   const [delimiter, setDelimiter] = useState<string>(',');
   const [previewData, setPreviewData] = useState<any[]>([]);
   const [newColNames, setNewColNames] = useState<string[]>([]);
@@ -45,19 +45,21 @@ export const SplitModal: React.FC<SplitModalProps> = ({ isOpen, onClose }) => {
     setIsProcessing(true);
 
     try {
-      // 1. Add Columns
+      // 1. Resolve Column Name Collisions
+      // We ensure we don't overwrite existing columns by suffixing new names if needed.
+      const existingNames = columns.map(c => c.name);
+      const finalColNames = generateUniqueNames(existingNames, newColNames);
+
+      // 2. Add Columns
       // DuckDB doesn't support adding multiple columns in one ALTER TABLE (standard SQL limitation usually)
-      // We loop.
-      for (const colName of newColNames) {
-        // Drop if exists to be safe (or suffix?) - Let's just add IF NOT EXISTS logic
-        // Actually DuckDB `ADD COLUMN IF NOT EXISTS` is supported in recent versions
-        await executeMutation(`ALTER TABLE current_dataset ADD COLUMN IF NOT EXISTS "${colName}" VARCHAR`);
+      for (const colName of finalColNames) {
+        await executeMutation(`ALTER TABLE current_dataset ADD COLUMN "${colName}" VARCHAR`);
       }
 
-      // 2. Update Data
+      // 3. Update Data
       // UPDATE table SET col1 = list_extract(str_split(src, delim), 1), col2 = ...
       // list_extract is 1-based in DuckDB
-      const setClauses = newColNames.map((colName, idx) => {
+      const setClauses = finalColNames.map((colName, idx) => {
         // str_split returns a list. 
         // We use unnest or list_extract. list_extract(list, index)
         // DuckDB list indices are 1-based.
@@ -170,3 +172,22 @@ export const SplitModal: React.FC<SplitModalProps> = ({ isOpen, onClose }) => {
     </div>
   );
 };
+
+function generateUniqueNames(existingColumns: string[], proposedNames: string[]): string[] {
+  const usedNames = new Set(existingColumns);
+  const resultNames: string[] = [];
+
+  for (const name of proposedNames) {
+    let uniqueName = name;
+    let counter = 1;
+
+    while (usedNames.has(uniqueName)) {
+      uniqueName = `${name}_${counter}`;
+      counter++;
+    }
+
+    usedNames.add(uniqueName);
+    resultNames.push(uniqueName);
+  }
+  return resultNames;
+}
