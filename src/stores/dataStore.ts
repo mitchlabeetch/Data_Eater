@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { initDuckDB, ingestCSV, query, registerFile } from '../services/duckdb';
+import { initDuckDB, ingestCSV, query, registerFile, streamQuery } from '../services/duckdb';
 import JsonWorker from '../workers/jsonSerializer?worker';
 import { useMascotStore } from './mascotStore';
 import { useErrorStore } from './errorStore';
@@ -68,6 +68,7 @@ interface DataStore {
   executeMutation: (sql: string, description?: string) => Promise<void>;
   selectColumn: (colName: string | null) => Promise<void>;
   fetchRows: (limit?: number) => Promise<any[]>;
+  fetchRowsStream: () => AsyncGenerator<any[], void, unknown>;
   queryResult: (sql: string) => Promise<any[]>;
   rawQuery: (sql: string) => Promise<any[]>;
   clearDiff: () => void;
@@ -478,6 +479,15 @@ export const useDataStore = create<DataStore>((set, get) => ({
     } catch (e) {
       useErrorStore.getState().reportError(classifyError(e), e);
       return [];
+    }
+  },
+
+  fetchRowsStream: async function* () {
+    try {
+      yield* streamQuery(`SELECT * FROM current_dataset`);
+    } catch (e) {
+      useErrorStore.getState().reportError(classifyError(e), e);
+      throw e;
     }
   },
 

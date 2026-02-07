@@ -60,6 +60,17 @@ export const query = async (sql: string) => {
     return result.toArray();
 };
 
+export const streamQuery = async function* (sql: string) {
+    const { conn } = getDB();
+    if (!conn) throw new Error("Connection lost");
+
+    const result = await conn.query(sql);
+
+    for (const batch of result.batches) {
+        yield batch.toArray();
+    }
+};
+
 // Helper to check for magic bytes (Zip signature: PK\x03\x04)
 const isZipFile = async (file: File): Promise<boolean> => {
     if (file.size < 4) return false;
