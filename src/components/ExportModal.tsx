@@ -11,7 +11,7 @@ interface ExportModalProps {
 }
 
 const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => {
-  const { fileMeta, columns, fetchRows, markExported } = useDataStore();
+  const { fileMeta, columns, fetchRowsStream, markExported } = useDataStore();
   const [options, setOptions] = useState<ExportOptions>(DEFAULT_EXPORT_OPTIONS);
   const [isExporting, setIsExporting] = useState(false);
 
@@ -40,8 +40,9 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => {
       } else {
         // Fallback for Excel or custom encodings (e.g. windows-1252)
         // Fetch ALL rows for export (not just the view)
-        const allRows = await fetchRows(1000000); // 1M limit for V1
-        await generateExport(allRows, columns, options);
+        // Optimization: Use Streaming to avoid loading 1M rows into memory
+        const rowStream = fetchRowsStream();
+        await generateExport(rowStream, columns, options);
       }
 
       markExported(); // Mark as safe
