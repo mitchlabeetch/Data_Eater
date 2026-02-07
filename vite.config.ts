@@ -12,7 +12,7 @@ export default defineConfig(async () => ({
   //
   // 1. prevent Vite from obscuring rust errors
   clearScreen: false,
-  // 2. tauri expects a fixed port, fail if that port is not available
+  // 2. Tauri expects a fixed port; strictPort: true ensures failure if unavailable.
   server: {
     port: 1420,
     strictPort: true,
