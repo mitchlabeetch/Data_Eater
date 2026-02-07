@@ -82,6 +82,32 @@ export const registerFile = async (file: File): Promise<string> => {
     }
 
     if (isExcel) {
+      const tempName = `converted_${file.name.replace(/\s/g, '_')}.csv`;
+
+      try {
+        // Optimization: Try to use DuckDB's spatial extension to read Excel directly
+        // This avoids loading the entire file into memory (using ExcelJS) and creating a large CSV buffer
+
+        // Register the raw file using BROWSER_FILEREADER (lazy/streaming)
+        await db.registerFileHandle(file.name, file, duckdb.DuckDBDataProtocol.BROWSER_FILEREADER, true);
+
+        const { conn } = getDB();
+
+        // Attempt to load spatial extension
+        await conn.query(`INSTALL spatial; LOAD spatial;`);
+        console.log("🚀 Spatial extension loaded, using native Excel reading");
+
+        // Convert to CSV using DuckDB (zero-copy from JS side)
+        // st_read handles the Excel parsing
+        const safeFileName = file.name.replace(/'/g, "''");
+        await conn.query(`COPY (SELECT * FROM st_read('${safeFileName}')) TO '${tempName}' (FORMAT CSV, HEADER)`);
+
+        return tempName;
+      } catch (e) {
+         console.warn("⚠️ Native Excel reading failed (spatial extension issue?), falling back to ExcelJS.", e);
+         // If native method fails (e.g. offline, extension missing), fall back to ExcelJS
+      }
+
       const ExcelJS = (await import('exceljs')).default;
       const workbook = new ExcelJS.Workbook();
       const buffer = await file.arrayBuffer();
@@ -93,8 +119,6 @@ export const registerFile = async (file: File): Promise<string> => {
       // Use ExcelJS native buffer write (much more memory efficient)
       const csvBuffer = await workbook.csv.writeBuffer();
       const blob = new Blob([csvBuffer], { type: 'text/csv' });
-      
-      const tempName = `converted_${file.name.replace(/\s/g, '_')}.csv`;
       
       // Register the Blob directly, avoiding string allocation
       await db.registerFileHandle(tempName, blob, duckdb.DuckDBDataProtocol.BROWSER_FILEREADER, true);
