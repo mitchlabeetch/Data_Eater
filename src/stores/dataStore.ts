@@ -624,18 +624,21 @@ export const useDataStore = create<DataStore>((set, get) => ({
     try {
       const cols = get().columns.map(c => `"${c.name}"`).join(', ');
       
-      // Check for exact duplicates
+      // Check for exact duplicates and calculate wasted space in one pass
       const sql = `
-        SELECT count(*) as cnt
+        SELECT
+          count(*) as group_count,
+          sum(cnt - 1) as wasted
         FROM (
-          SELECT count(*) 
+          SELECT count(*) as cnt
           FROM current_dataset 
           GROUP BY ALL 
           HAVING count(*) > 1
         )
       `;
       const res = await query(sql);
-      const groupCount = Number(res[0]?.cnt || 0);
+      const groupCount = Number(res[0]?.group_count || 0);
+      const totalWasted = Number(res[0]?.wasted || 0);
 
       if (groupCount > 0) {
         const detailSql = `
@@ -648,13 +651,6 @@ export const useDataStore = create<DataStore>((set, get) => ({
         `;
         const groups = await query(detailSql);
         
-        const totalDupesSql = `
-          SELECT sum(cnt - 1) as wasted 
-          FROM (SELECT count(*) as cnt FROM current_dataset GROUP BY ALL HAVING count(*) > 1)
-        `;
-        const totalRes = await query(totalDupesSql);
-        const totalWasted = Number(totalRes[0]?.wasted || 0);
-
         set({ duplicates: { total: totalWasted, groups } });
       } else {
         set({ duplicates: null });
