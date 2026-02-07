@@ -29,10 +29,35 @@ export const processBatch = async (
 
   try {
     // 1. Convert Batch to CSV string for Prompt
-    // Simple robust CSV conversion
-    const headers = Object.keys(safeBatch[0] || {}).join(',');
-    const rows = safeBatch.map(r => Object.values(r).map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-    const csvContent = `${headers}\n${rows}`;
+    let csvContent = "";
+
+    // Sync fallback function
+    const generateCsvSync = (data: any[]) => {
+      const headers = Object.keys(data[0] || {}).join(',');
+      const rows = data.map(r => Object.values(r).map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+      return `${headers}\n${rows}`;
+    };
+
+    if (typeof Worker !== 'undefined') {
+      const worker = new Worker(new URL('../workers/csvWorker.ts', import.meta.url), { type: 'module' });
+      try {
+        csvContent = await new Promise<string>((resolve, reject) => {
+          worker.onmessage = (e) => {
+            if (e.data.error) reject(new Error(e.data.error));
+            else resolve(e.data.csv);
+          };
+          worker.onerror = (err) => reject(err);
+          worker.postMessage({ data: safeBatch });
+        });
+      } catch (e) {
+        console.warn("CSV Worker failed, falling back to sync generation", e);
+        csvContent = generateCsvSync(safeBatch);
+      } finally {
+        worker.terminate();
+      }
+    } else {
+      csvContent = generateCsvSync(safeBatch);
+    }
 
     const systemPrompt = `
       You are an expert Data Engineer assistant for Robertet.
