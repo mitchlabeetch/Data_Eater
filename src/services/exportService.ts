@@ -212,16 +212,16 @@ const exportExcel = async (rows: any[], columns: { name: string }[], filename: s
   // Add Headers
   sheet.columns = columns.map(c => ({ header: c.name, key: c.name }));
 
-  // Add Rows - Explicit mapping to handle potential Arrow Proxies
-  const plainRows = rows.map(row => {
-    const obj: any = {};
-    columns.forEach(col => {
-        obj[col.name] = row[col.name];
-    });
-    return obj;
-  });
+  // Add Rows - Iterate to avoid memory spike and support Arrow Proxies
+  // Using arrays for rows is more efficient than objects for ExcelJS
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const rowValues = columns.map(col => row[col.name]);
+    sheet.addRow(rowValues);
 
-  sheet.addRows(plainRows);
+    // Yield to event loop every 2000 rows to keep UI responsive
+    if (i % 2000 === 0) await new Promise(resolve => setTimeout(resolve, 0));
+  }
 
   // Write
   const buffer = await workbook.xlsx.writeBuffer();
