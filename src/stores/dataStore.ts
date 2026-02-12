@@ -624,41 +624,33 @@ export const useDataStore = create<DataStore>((set, get) => ({
     try {
       const cols = get().columns.map(c => `"${c.name}"`).join(', ');
       
-      // Check for exact duplicates
-      const sql = `
-        SELECT count(*) as cnt
-        FROM (
-          SELECT count(*) 
-          FROM current_dataset 
-          GROUP BY ALL 
-          HAVING count(*) > 1
-        )
-      `;
-      const res = await query(sql);
-      const groupCount = Number(res[0]?.cnt || 0);
+      // Create TEMP table with duplicates - Heavy Scan (One Pass)
+      await query(`CREATE OR REPLACE TEMP TABLE temp_duplicates AS
+          SELECT count(*) as group_count, ${cols}
+          FROM current_dataset
+          GROUP BY ALL
+          HAVING count(*) > 1`);
+
+      // Check if we have any duplicates
+      const countRes = await query(`SELECT count(*) as cnt FROM temp_duplicates`);
+      const groupCount = Number(countRes[0]?.cnt || 0);
 
       if (groupCount > 0) {
-        const detailSql = `
-          SELECT count(*) as count, ${cols}
-          FROM current_dataset 
-          GROUP BY ALL 
-          HAVING count(*) > 1
-          ORDER BY count(*) DESC
-          LIMIT 5
-        `;
-        const groups = await query(detailSql);
+        // Get details (Light scan)
+        // Alias group_count to count for UI compatibility
+        const groups = await query(`SELECT *, group_count as count FROM temp_duplicates ORDER BY group_count DESC LIMIT 5`);
         
-        const totalDupesSql = `
-          SELECT sum(cnt - 1) as wasted 
-          FROM (SELECT count(*) as cnt FROM current_dataset GROUP BY ALL HAVING count(*) > 1)
-        `;
-        const totalRes = await query(totalDupesSql);
+        // Calculate wasted (Light scan)
+        const totalRes = await query(`SELECT sum(group_count - 1) as wasted FROM temp_duplicates`);
         const totalWasted = Number(totalRes[0]?.wasted || 0);
 
         set({ duplicates: { total: totalWasted, groups } });
       } else {
         set({ duplicates: null });
       }
+
+      // Cleanup
+      await query(`DROP TABLE IF EXISTS temp_duplicates`);
 
     } catch (e) {
       console.error("Dupe Check Error", e);
