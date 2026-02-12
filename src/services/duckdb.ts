@@ -82,6 +82,24 @@ export const registerFile = async (file: File): Promise<string> => {
     }
 
     if (isExcel) {
+      // OPTIMIZATION: Try DuckDB st_read first (streaming) to avoid loading full file into memory
+      try {
+          const { conn } = getDB();
+          // Register raw file first
+          await db.registerFileHandle(file.name, file, duckdb.DuckDBDataProtocol.BROWSER_FILEREADER, true);
+
+          const sanitizedFileName = file.name.replace(/'/g, "''");
+          // Verify if st_read works (requires spatial extension usually, but often bundled in WASM)
+          // We run a lightweight query to check if it can read the file
+          if (conn) {
+              await conn.query(`DESCRIBE SELECT * FROM st_read('${sanitizedFileName}') LIMIT 0`);
+              console.log("🚀 Using optimized st_read for Excel ingestion");
+              return file.name;
+          }
+      } catch (e) {
+          console.warn("⚠️ st_read optimization failed, falling back to ExcelJS in-memory conversion", e);
+      }
+
       const ExcelJS = (await import('exceljs')).default;
       const workbook = new ExcelJS.Workbook();
       const buffer = await file.arrayBuffer();
@@ -111,6 +129,7 @@ export const ingestCSV = async (file: File) => {
 
     const tableName = 'current_dataset';
     const fileNameToLoad = await registerFile(file);
+    const sqlFileName = fileNameToLoad.replace(/'/g, "''");
     
     await conn.query(`DROP TABLE IF EXISTS ${tableName}`);
 
@@ -123,8 +142,18 @@ export const ingestCSV = async (file: File) => {
     // 2. The original file has an .xlsx extension (case-insensitive).
     //    Note: If registerFile did NOT convert it (e.g., fake .xlsx), it's likely a raw CSV.
     //    DuckDB's read_csv_auto handles CSVs robustly, even with .xlsx extension.
-    if (isConverted || /\.xlsx$/i.test(file.name)) {
-         await conn.query(`CREATE TABLE ${tableName} AS SELECT * FROM read_csv_auto('${fileNameToLoad}')`);
+    if (isConverted) {
+         await conn.query(`CREATE TABLE ${tableName} AS SELECT * FROM read_csv_auto('${sqlFileName}')`);
+    } else if (/\.xlsx$/i.test(file.name)) {
+         // Check if it is a real Excel file (Zip) or a misnamed CSV
+         const isRealExcel = await isZipFile(file);
+         if (isRealExcel) {
+             // Real Excel: registerFile verified st_read works
+             await conn.query(`CREATE TABLE ${tableName} AS SELECT * FROM st_read('${sqlFileName}')`);
+         } else {
+             // Misnamed CSV: use read_csv_auto
+             await conn.query(`CREATE TABLE ${tableName} AS SELECT * FROM read_csv_auto('${sqlFileName}')`);
+         }
     } else {
         // Sniff for Encoding and Delimiter
         let delimiter = ',';
