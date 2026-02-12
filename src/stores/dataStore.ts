@@ -363,8 +363,16 @@ export const useDataStore = create<DataStore>((set, get) => ({
     try {
       await query(sql);
       
-      const currentRows = await query(`SELECT * FROM current_dataset LIMIT 100`);
+      const [currentRows, schema] = await Promise.all([
+         query(`SELECT * FROM current_dataset LIMIT 100`),
+         query(`PRAGMA table_info('current_dataset')`)
+      ]);
       
+      const columns = schema.map((c: any) => ({
+        name: c.name,
+        type: c.type
+      }));
+
       if (state.selectedColumn) {
          await state.selectColumn(state.selectedColumn);
       }
@@ -380,6 +388,7 @@ export const useDataStore = create<DataStore>((set, get) => ({
 
       set({ 
         rows: currentRows, 
+        columns,
         isLoading: false, 
         hasUnsavedChanges: true,
         history: newHistory
