@@ -60,6 +60,28 @@ export const query = async (sql: string) => {
     return result.toArray();
 };
 
+export const streamQuery = async function* (sql: string) {
+    const { conn } = getDB();
+    if (!conn) throw new Error("Connection lost");
+
+    const connection = conn as any;
+
+    if (typeof connection.send === 'function') {
+        const result = await connection.send(sql);
+        for await (const batch of result) {
+            // Yield plain objects for compatibility
+            yield batch.toArray().map((row: any) => ({ ...row }));
+        }
+    } else {
+        const result = await conn.query(sql);
+        const allRows = result.toArray().map((row: any) => ({ ...row }));
+        const CHUNK_SIZE = 5000;
+        for (let i = 0; i < allRows.length; i += CHUNK_SIZE) {
+            yield allRows.slice(i, i + CHUNK_SIZE);
+        }
+    }
+};
+
 // Helper to check for magic bytes (Zip signature: PK\x03\x04)
 const isZipFile = async (file: File): Promise<boolean> => {
     if (file.size < 4) return false;

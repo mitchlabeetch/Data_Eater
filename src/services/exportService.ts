@@ -56,7 +56,7 @@ export const PRESETS: Record<string, ExportOptions> = {
   }
 };
 
-export const generateExport = async (rows: any[] | null, columns: { name: string }[], options: ExportOptions) => {
+export const generateExport = async (rows: any[] | AsyncIterable<any[]> | null, columns: { name: string }[], options: ExportOptions) => {
   const { filename, format, encoding, delimiter, includeHeaders, tableName } = options;
   
   if (format === 'pbip_theme') {
@@ -90,7 +90,7 @@ export const generateExport = async (rows: any[] | null, columns: { name: string
   if (format === 'xlsx') {
     await exportExcel(safeRows, columns, fullFilename);
   } else if (format === 'json') {
-    exportJSON(safeRows, fullFilename);
+    await exportJSON(safeRows, fullFilename);
   } else if (format === 'parquet') {
     // If no tableName but format is parquet, use current_dataset
     await exportParquetFromDB(fullFilename, 'current_dataset');
@@ -205,23 +205,32 @@ const exportJSONFromDB = async (tableName: string, filename: string) => {
   }
 };
 
-const exportExcel = async (rows: any[], columns: { name: string }[], filename: string) => {
+const exportExcel = async (rows: any[] | AsyncIterable<any[]>, columns: { name: string }[], filename: string) => {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('Data');
 
   // Add Headers
   sheet.columns = columns.map(c => ({ header: c.name, key: c.name }));
 
-  // Add Rows - Explicit mapping to handle potential Arrow Proxies
-  const plainRows = rows.map(row => {
-    const obj: any = {};
-    columns.forEach(col => {
-        obj[col.name] = row[col.name];
-    });
-    return obj;
-  });
+  const addChunk = (chunk: any[]) => {
+      // Explicit mapping to handle potential Arrow Proxies
+      const plainRows = chunk.map(row => {
+        const obj: any = {};
+        columns.forEach(col => {
+            obj[col.name] = row[col.name];
+        });
+        return obj;
+      });
+      sheet.addRows(plainRows);
+  };
 
-  sheet.addRows(plainRows);
+  if (Array.isArray(rows)) {
+    addChunk(rows);
+  } else {
+    for await (const chunk of rows) {
+      addChunk(chunk);
+    }
+  }
 
   // Write
   const buffer = await workbook.xlsx.writeBuffer();
@@ -229,21 +238,28 @@ const exportExcel = async (rows: any[], columns: { name: string }[], filename: s
   triggerDownload(blob, filename);
 };
 
-const exportJSON = (rows: any[], filename: string) => {
-  const jsonStr = JSON.stringify(rows, null, 2);
+const exportJSON = async (rows: any[] | AsyncIterable<any[]>, filename: string) => {
+  let data: any[] = [];
+  if (Array.isArray(rows)) {
+      data = rows;
+  } else {
+      for await (const chunk of rows) {
+          data.push(...chunk);
+      }
+  }
+  const jsonStr = JSON.stringify(data, null, 2);
   const blob = new Blob([jsonStr], { type: 'application/json' });
   triggerDownload(blob, filename);
 };
 
 const exportCSV = async (
-  rows: any[], 
+  rows: any[] | AsyncIterable<any[]>,
   columns: { name: string }[], 
   filename: string, 
   encoding: 'utf-8' | 'windows-1252', 
   delimiter: string,
   includeHeaders: boolean
 ) => {
-  const CHUNK_SIZE = 2000;
   const chunks: (string | Uint8Array | Buffer)[] = [];
 
   // 1. Header
@@ -256,36 +272,44 @@ const exportCSV = async (
     }
   }
 
-  // 2. Data Rows (Chunked)
-  for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
-    const chunkRows = rows.slice(i, i + CHUNK_SIZE);
+  const processChunk = (chunkRows: any[]) => {
+      const chunkStr = chunkRows.map(row => {
+        return columns.map(col => {
+          const val = row[col.name];
+          const strVal = val === null || val === undefined ? '' : String(val);
+          // Escape quotes: simple regex for global replacement
+          return `"${strVal.split('"').join('""')}"`;
+        }).join(delimiter);
+      }).join('\n');
 
-    const chunkStr = chunkRows.map(row => {
-      return columns.map(col => {
-        const val = row[col.name];
-        const strVal = val === null || val === undefined ? '' : String(val);
-        // Escape quotes: simple regex for global replacement
-        return `"${strVal.split('"').join('""')}"`;
-      }).join(delimiter);
-    }).join('\n');
+      if (chunks.length > 0) {
+          if (encoding === 'windows-1252') {
+              chunks.push(iconv.encode('\n', 'win1252'));
+          } else {
+              chunks.push('\n');
+          }
+      }
 
-    // Add newline separator if needed
-    if (chunks.length > 0) {
-        if (encoding === 'windows-1252') {
-            chunks.push(iconv.encode('\n', 'win1252'));
-        } else {
-            chunks.push('\n');
-        }
-    }
+      if (encoding === 'windows-1252') {
+         chunks.push(iconv.encode(chunkStr, 'win1252'));
+      } else {
+         chunks.push(chunkStr);
+      }
+  };
 
-    if (encoding === 'windows-1252') {
-       chunks.push(iconv.encode(chunkStr, 'win1252'));
-    } else {
-       chunks.push(chunkStr);
-    }
-
-    // Yield to event loop
-    await new Promise(resolve => setTimeout(resolve, 0));
+  // 2. Data Rows
+  if (Array.isArray(rows)) {
+      const CHUNK_SIZE = 2000;
+      for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+        const chunkRows = rows.slice(i, i + CHUNK_SIZE);
+        processChunk(chunkRows);
+        // Yield to event loop
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+  } else {
+      for await (const chunk of rows) {
+          processChunk(chunk);
+      }
   }
 
   // 3. Create Blob
