@@ -8,7 +8,7 @@ interface SplitModalProps {
 }
 
 export const SplitModal: React.FC<SplitModalProps> = ({ isOpen, onClose }) => {
-  const { selectedColumn, fetchRows, executeMutation } = useDataStore();
+  const { selectedColumn, fetchRows, executeMutation, columns, rawQuery } = useDataStore();
   const [delimiter, setDelimiter] = useState<string>(',');
   const [previewData, setPreviewData] = useState<any[]>([]);
   const [newColNames, setNewColNames] = useState<string[]>([]);
@@ -45,26 +45,43 @@ export const SplitModal: React.FC<SplitModalProps> = ({ isOpen, onClose }) => {
     setIsProcessing(true);
 
     try {
-      // 1. Add Columns
+      // 1. Add Columns with suffix handling
       // DuckDB doesn't support adding multiple columns in one ALTER TABLE (standard SQL limitation usually)
-      // We loop.
-      for (const colName of newColNames) {
-        // Drop if exists to be safe (or suffix?) - Let's just add IF NOT EXISTS logic
-        // Actually DuckDB `ADD COLUMN IF NOT EXISTS` is supported in recent versions
-        await executeMutation(`ALTER TABLE current_dataset ADD COLUMN IF NOT EXISTS "${colName}" VARCHAR`);
+      const existingNames = new Set(columns.map(c => c.name));
+      const finalNames: string[] = [];
+
+      // Determine unique names
+      for (const name of newColNames) {
+        let uniqueName = name;
+        let counter = 1;
+        while (existingNames.has(uniqueName)) {
+           uniqueName = `${name}_${counter}`;
+           counter++;
+        }
+        existingNames.add(uniqueName);
+        finalNames.push(uniqueName);
+      }
+
+      // Execute ALTER TABLE statements using rawQuery to avoid full store refresh loop
+      for (const colName of finalNames) {
+        const safeColName = colName.replace(/"/g, '""');
+        await rawQuery(`ALTER TABLE current_dataset ADD COLUMN "${safeColName}" VARCHAR`);
       }
 
       // 2. Update Data
       // UPDATE table SET col1 = list_extract(str_split(src, delim), 1), col2 = ...
       // list_extract is 1-based in DuckDB
-      const setClauses = newColNames.map((colName, idx) => {
+      const setClauses = finalNames.map((colName, idx) => {
+        const safeColName = colName.replace(/"/g, '""');
+        const safeSourceCol = selectedColumn.replace(/"/g, '""');
+        const safeDelimiter = delimiter.replace(/'/g, "''");
         // str_split returns a list. 
         // We use unnest or list_extract. list_extract(list, index)
         // DuckDB list indices are 1-based.
-        return `"${colName}" = list_extract(string_split("${selectedColumn}", '${delimiter}'), ${idx + 1})`;
+        return `"${safeColName}" = list_extract(string_split("${safeSourceCol}", '${safeDelimiter}'), ${idx + 1})`;
       }).join(', ');
 
-      await executeMutation(`UPDATE current_dataset SET ${setClauses}`);
+      await executeMutation(`UPDATE current_dataset SET ${setClauses}`, `Découpage de ${selectedColumn}`);
       
       onClose();
     } catch (e) {
