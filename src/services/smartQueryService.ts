@@ -113,7 +113,9 @@ export const runSmartQuery = async (
       onProgress(Math.round((completedChunks / totalChunks) * 100));
     });
 
-    const wrapper = p.then(() => {
+    // Use finally to ensure the promise is removed from the executing set
+    // even if the operation fails.
+    const wrapper = p.finally(() => {
       executing.delete(wrapper);
     });
 
