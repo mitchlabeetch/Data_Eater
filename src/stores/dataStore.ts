@@ -373,7 +373,7 @@ export const useDataStore = create<DataStore>((set, get) => ({
         type: c.type
       }));
 
-      if (state.selectedColumn) {
+      if (state.selectedColumn && columns.some(c => c.name === state.selectedColumn)) {
          await state.selectColumn(state.selectedColumn);
       }
 
