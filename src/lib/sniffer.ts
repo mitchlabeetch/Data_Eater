@@ -50,7 +50,30 @@ const isUtf8 = (bytes: Uint8Array): boolean => {
 
 const detectDelimiter = (text: string): string => {
   const candidates = [',', ';', '\t', '|'];
-  const lines = text.split(/\r?\n/).filter(line => line.length > 0).slice(0, 10);
+
+  // Optimized line extraction without splitting the whole string
+  const lines: string[] = [];
+  let start = 0;
+  // We need up to 10 non-empty lines
+  while (lines.length < 10 && start < text.length) {
+    let end = text.indexOf('\n', start);
+    let line: string;
+
+    if (end === -1) {
+        line = text.substring(start);
+        start = text.length; // End loop next time
+    } else {
+        line = text.substring(start, end);
+        if (line.endsWith('\r')) {
+            line = line.substring(0, line.length - 1);
+        }
+        start = end + 1;
+    }
+
+    if (line.length > 0) {
+        lines.push(line);
+    }
+  }
   
   if (lines.length === 0) return ',';
 
