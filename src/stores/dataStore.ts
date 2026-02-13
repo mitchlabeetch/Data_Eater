@@ -157,13 +157,15 @@ export const useDataStore = create<DataStore>((set, get) => ({
       activeRules.forEach(rule => {
         const col = `"${rule.column}"`;
 
-        if (rule.operator === 'is_empty') {
-          clauses.push(`(${col} IS NULL OR CAST(${col} AS VARCHAR) = '')`);
-          return;
-        }
-        if (rule.operator === 'is_not_empty') {
-          clauses.push(`(${col} IS NOT NULL AND CAST(${col} AS VARCHAR) != '')`);
-          return;
+        switch (rule.operator) {
+          case 'is_empty':
+            clauses.push(`(${col} IS NULL OR CAST(${col} AS VARCHAR) = '')`);
+            return;
+          case 'is_not_empty':
+            clauses.push(`(${col} IS NOT NULL AND CAST(${col} AS VARCHAR) != '')`);
+            return;
+          default:
+            break;
         }
 
         const val = rule.value.replace(/'/g, "''");
