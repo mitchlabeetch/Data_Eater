@@ -106,7 +106,7 @@ const analyzeHealthOptimized = async (columns) => {
       const values = sampleRows
         .map(r => r[col.name])
         .filter(v => v !== null && v !== undefined)
-        .slice(0, 10) // Limit to 10 to match original logic, or more if desired
+        .slice(0, 100) // Limit to 100 to match implementation logic
         .map(String);
 
       // Pattern matching logic
