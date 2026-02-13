@@ -1,6 +1,52 @@
+import { generateCsv } from '../lib/csvUtils';
+
 const env = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env : {} as any;
 const API_URL = env.VITE_CLOUD_LLM_API_URL || 'https://api.openai.com/v1/chat/completions';
 const API_KEY = env.VITE_CLOUD_LLM_API_KEY || '';
+
+// Worker Management
+let csvWorker: Worker | null = null;
+const pendingCsvRequests = new Map<string, { resolve: (csv: string) => void, reject: (err: any) => void }>();
+
+function getCsvWorker(): Worker | null {
+  if (typeof Worker === 'undefined') return null;
+
+  if (!csvWorker) {
+    try {
+      csvWorker = new Worker(new URL('../workers/csvWorker.ts', import.meta.url), { type: 'module' });
+      csvWorker.onmessage = (e) => {
+        const { id, csv, error } = e.data;
+        const callback = pendingCsvRequests.get(id);
+        if (callback) {
+          pendingCsvRequests.delete(id);
+          if (error) callback.reject(new Error(error));
+          else callback.resolve(csv);
+        }
+      };
+      csvWorker.onerror = (e) => {
+        console.error("CSV Worker Error:", e);
+      };
+    } catch (e) {
+      console.warn("Failed to initialize CSV Worker", e);
+      return null;
+    }
+  }
+  return csvWorker;
+}
+
+async function generateCsvAsync(data: any[]): Promise<string> {
+  const worker = getCsvWorker();
+  if (!worker) {
+     return generateCsv(data);
+  }
+
+  return new Promise((resolve, reject) => {
+    // Simple ID generation
+    const id = Math.random().toString(36).substring(2, 15);
+    pendingCsvRequests.set(id, { resolve, reject });
+    worker.postMessage({ id, data });
+  });
+}
 
 export const processBatch = async (
   query: string, 
@@ -29,10 +75,7 @@ export const processBatch = async (
 
   try {
     // 1. Convert Batch to CSV string for Prompt
-    // Simple robust CSV conversion
-    const headers = Object.keys(safeBatch[0] || {}).join(',');
-    const rows = safeBatch.map(r => Object.values(r).map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-    const csvContent = `${headers}\n${rows}`;
+    const csvContent = await generateCsvAsync(safeBatch);
 
     const systemPrompt = `
       You are an expert Data Engineer assistant for Robertet.
