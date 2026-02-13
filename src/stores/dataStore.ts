@@ -638,7 +638,7 @@ export const useDataStore = create<DataStore>((set, get) => ({
       if (groupCount > 0) {
         // Get details (Light scan)
         // Alias group_count to count for UI compatibility
-        const groups = await query(`SELECT *, group_count as count FROM temp_duplicates ORDER BY group_count DESC LIMIT 5`);
+        const groups = await query(`SELECT ${cols}, group_count as count FROM temp_duplicates ORDER BY group_count DESC LIMIT 5`);
         
         // Calculate wasted (Light scan)
         const totalRes = await query(`SELECT sum(group_count - 1) as wasted FROM temp_duplicates`);
