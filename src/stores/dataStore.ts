@@ -368,7 +368,7 @@ export const useDataStore = create<DataStore>((set, get) => ({
          query(`PRAGMA table_info('current_dataset')`)
       ]);
       
-      const columns = schema.map((c: any) => ({
+      const columns = schema.map((c: { name: string; type: string }) => ({
         name: c.name,
         type: c.type
       }));
