@@ -239,16 +239,30 @@ const exportExcel = async (rows: any[] | AsyncIterable<any[]>, columns: { name: 
 };
 
 const exportJSON = async (rows: any[] | AsyncIterable<any[]>, filename: string) => {
-  let data: any[] = [];
-  if (Array.isArray(rows)) {
-      data = rows;
-  } else {
-      for await (const chunk of rows) {
-          data.push(...chunk);
+  const parts: string[] = ['['];
+  let isFirst = true;
+
+  const processChunk = (chunk: any[]) => {
+      for (const row of chunk) {
+          if (!isFirst) {
+              parts.push(',');
+          }
+          // Indentation for consistency with previous behavior, though slightly less efficient
+          parts.push('\n  ' + JSON.stringify(row));
+          isFirst = false;
       }
+  };
+
+  if (Array.isArray(rows)) {
+    processChunk(rows);
+  } else {
+    for await (const chunk of rows) {
+      processChunk(chunk);
+    }
   }
-  const jsonStr = JSON.stringify(data, null, 2);
-  const blob = new Blob([jsonStr], { type: 'application/json' });
+
+  parts.push('\n]');
+  const blob = new Blob(parts, { type: 'application/json' });
   triggerDownload(blob, filename);
 };
 
