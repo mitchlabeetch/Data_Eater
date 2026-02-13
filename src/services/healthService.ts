@@ -53,6 +53,9 @@ export const analyzeHealth = async (columns: { name: string; type: string }[], f
   const statsRow = res[0];
   const rowCount = Number(statsRow.total_rows);
 
+  // Fetch sample once for all heuristics (Pattern Matching & AS400)
+  const sampleRows = await query(`SELECT * FROM current_dataset LIMIT 1000`);
+
   const columnHealth: Record<string, ColumnHealth> = {};
 
   // Prepare outlier checks
@@ -114,12 +117,15 @@ export const analyzeHealth = async (columns: { name: string; type: string }[], f
     // Pattern Matching (Heuristic)
     let detectedPattern: string | undefined;
     if (colType === 'VARCHAR') {
-      const sample = await query(`SELECT "${col.name}" FROM current_dataset WHERE "${col.name}" IS NOT NULL LIMIT 10`);
-      const values = sample.map(s => String(s[col.name]));
+      const values = sampleRows
+        .map(row => row[col.name])
+        .filter(v => v !== null && v !== undefined)
+        .slice(0, 100)
+        .map(String);
       
       for (const [key, regex] of Object.entries(PATTERNS)) {
         const matchCount = values.filter(v => regex.test(v)).length;
-        if (matchCount > values.length * 0.7) { // 70% match in sample
+        if (values.length > 0 && matchCount > values.length * 0.7) { // 70% match in sample
           detectedPattern = key;
           break;
         }
@@ -155,7 +161,6 @@ export const analyzeHealth = async (columns: { name: string; type: string }[], f
   }
 
   // 3. AS400 Validation
-  const sampleRows = await query(`SELECT * FROM current_dataset LIMIT 500`);
   const as400 = validateForAS400(sampleRows, columns);
 
   const overallScore = Math.round(totalColumnScore / columns.length);
