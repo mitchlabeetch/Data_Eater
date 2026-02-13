@@ -45,6 +45,11 @@ for (const tc of testCases) {
     const oldRes = getColCountOld(tc.input);
     const newRes = getColCountNew(tc.input);
 
+    if (oldRes !== tc.expectedOld) {
+        console.error(`ERROR: "${tc.input}" -> Expected Old: ${tc.expectedOld}, Got: ${oldRes}`);
+        errors++;
+    }
+
     if (newRes !== tc.expectedNew) {
         console.error(`ERROR: "${tc.input}" -> Expected New: ${tc.expectedNew}, Got: ${newRes}`);
         errors++;
