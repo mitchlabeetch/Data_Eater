@@ -53,7 +53,7 @@ export const SplitModal: React.FC<SplitModalProps> = ({ isOpen, onClose }) => {
       // 2. Add Columns
       // DuckDB doesn't support adding multiple columns in one ALTER TABLE (standard SQL limitation usually)
       for (const colName of finalColNames) {
-        await executeMutation(`ALTER TABLE current_dataset ADD COLUMN "${colName}" VARCHAR`);
+        await executeMutation(`ALTER TABLE current_dataset ADD COLUMN "${colName.replace(/"/g, '""')}" VARCHAR`);
       }
 
       // 3. Update Data
