@@ -156,6 +156,18 @@ export const useDataStore = create<DataStore>((set, get) => ({
       
       activeRules.forEach(rule => {
         const col = `"${rule.column}"`;
+
+        switch (rule.operator) {
+          case 'is_empty':
+            clauses.push(`(${col} IS NULL OR CAST(${col} AS VARCHAR) = '')`);
+            return;
+          case 'is_not_empty':
+            clauses.push(`(${col} IS NOT NULL AND CAST(${col} AS VARCHAR) != '')`);
+            return;
+          default:
+            break;
+        }
+
         const val = rule.value.replace(/'/g, "''");
         
         switch (rule.operator) {
@@ -167,8 +179,6 @@ export const useDataStore = create<DataStore>((set, get) => ({
           case 'less_than': clauses.push(`${col} < '${val}'`); break;
           case 'starts_with': clauses.push(`CAST(${col} AS VARCHAR) ILIKE '${val}%'`); break;
           case 'ends_with': clauses.push(`CAST(${col} AS VARCHAR) ILIKE '%${val}%'`); break;
-          case 'is_empty': clauses.push(`(${col} IS NULL OR CAST(${col} AS VARCHAR) = '')`); break;
-          case 'is_not_empty': clauses.push(`(${col} IS NOT NULL AND CAST(${col} AS VARCHAR) != '')`); break;
         }
       });
 
