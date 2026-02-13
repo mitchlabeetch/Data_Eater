@@ -160,10 +160,16 @@ export const detectJaggedRows = async (file: File, delimiter?: string, encoding:
         // Robust split handling quoted strings
         // Matches delimiter only if followed by even number of quotes
         const getColCount = (line: string) => {
-           // Remove quoted strings to count delimiters safely
-           // This is a heuristic: we just want to know how many delimiters are OUTSIDE quotes
-           const stripped = line.replace(/"[^"]*"/g, '""'); 
-           return stripped.split(safeDelimiter).length;
+           let count = 1;
+           let inQuote = false;
+           for (let i = 0; i < line.length; i++) {
+               if (line[i] === '"') {
+                   inQuote = !inQuote;
+               } else if (line[i] === safeDelimiter && !inQuote) {
+                   count++;
+               }
+           }
+           return count;
         };
         
         const expectedCols = getColCount(nonEmptyLines[0]);
