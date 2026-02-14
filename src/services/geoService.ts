@@ -2,11 +2,11 @@ import { getCache, setCache } from './cacheService';
 
 const API_BASE = 'https://data.geopf.fr/geocodage';
 
-export const searchAddress = async (query: string): Promise<any | null> => {
+const searchAddressInternal = async (query: string): Promise<{ data: any | null, fromCache: boolean }> => {
   // Check Cache
   const cachedResult = await getCache<any>(query);
   if (cachedResult) {
-    return cachedResult;
+    return { data: cachedResult, fromCache: true };
   }
 
   try {
@@ -25,11 +25,16 @@ export const searchAddress = async (query: string): Promise<any | null> => {
     // Cache result
     await setCache(query, bestMatch);
     
-    return bestMatch;
+    return { data: bestMatch, fromCache: false };
   } catch (e) {
     console.error("GeoAPI Failed", e);
-    return null;
+    return { data: null, fromCache: false };
   }
+};
+
+export const searchAddress = async (query: string): Promise<any | null> => {
+  const { data } = await searchAddressInternal(query);
+  return data;
 };
 
 export const autocompleteAddress = async (text: string): Promise<string[]> => {
@@ -68,19 +73,14 @@ export const batchGeocode = async (
   for (let i = 0; i < uniqueQueries.length; i += CHUNK_SIZE) {
     const chunk = uniqueQueries.slice(i, i + CHUNK_SIZE);
     
-    // Check if any query in chunk will require network (cache miss)
     let hasNetworkRequest = false;
-    for (const q of chunk) {
-      const cached = await getCache<any>(q);
-      if (!cached) {
-        hasNetworkRequest = true;
-        break; // Short-circuit on first cache miss
-      }
-    }
     
     const promises = chunk.map(async (q) => {
-      const res = await searchAddress(q);
-      if (res) results.set(q, res);
+      const { data, fromCache } = await searchAddressInternal(q);
+      if (!fromCache) {
+        hasNetworkRequest = true;
+      }
+      if (data) results.set(q, data);
     });
 
     await Promise.all(promises);
