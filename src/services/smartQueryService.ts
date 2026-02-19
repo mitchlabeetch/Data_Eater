@@ -98,6 +98,7 @@ export const runSmartQuery = async (
 ): Promise<any[]> => {
   const CHUNK_SIZE = 500;
   const totalChunks = Math.ceil(fullData.length / CHUNK_SIZE);
+  // Pre-allocate results array to maintain order independent of completion time
   const allResults: any[][] = new Array(totalChunks);
   const CONCURRENCY_LIMIT = 5;
   const executing = new Set<Promise<void>>();
