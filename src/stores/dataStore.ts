@@ -9,6 +9,68 @@ import { analyzeHealth, GlobalHealthReport } from '../services/healthService';
 import { getRelevantColumns } from '../lib/searchUtils';
 import localforage from 'localforage';
 
+// Worker Singleton & Queue for JSON serialization
+let jsonWorkerInstance: Worker | null = null;
+let activeRequest: { resolve: (val: Uint8Array) => void; reject: (err: any) => void } | null = null;
+const workerQueue: Array<{ data: any; resolve: (val: Uint8Array) => void; reject: (err: any) => void }> = [];
+
+const processQueue = () => {
+  if (activeRequest || workerQueue.length === 0) return;
+
+  const task = workerQueue.shift();
+  if (!task) return;
+
+  activeRequest = { resolve: task.resolve, reject: task.reject };
+
+  let worker: Worker;
+
+  if (jsonWorkerInstance) {
+    worker = jsonWorkerInstance;
+  } else {
+    worker = new JsonWorker();
+    jsonWorkerInstance = worker;
+
+    worker.onmessage = (e) => {
+      if (activeRequest) {
+        if (e.data.error) {
+          activeRequest.reject(new Error(e.data.error));
+        } else {
+          activeRequest.resolve(e.data.buffer);
+        }
+        activeRequest = null;
+        processQueue();
+      }
+    };
+    worker.onerror = (e) => {
+      if (activeRequest) {
+        activeRequest.reject(e);
+        activeRequest = null;
+      }
+      // Recreate worker on error to ensure stability
+      jsonWorkerInstance?.terminate();
+      jsonWorkerInstance = null;
+      processQueue();
+    };
+  }
+
+  try {
+    worker.postMessage(task.data);
+  } catch (e) {
+    if (activeRequest) {
+      activeRequest.reject(e);
+      activeRequest = null;
+    }
+    processQueue();
+  }
+};
+
+const serializeJson = (data: any): Promise<Uint8Array> => {
+  return new Promise((resolve, reject) => {
+    workerQueue.push({ data, resolve, reject });
+    processQueue();
+  });
+};
+
 interface Column {
   name: string;
   type: string;
@@ -528,22 +590,7 @@ export const useDataStore = create<DataStore>((set, get) => ({
       if (!db || !conn) return;
 
       // Offload JSON serialization to a worker to prevent main thread blocking
-      const buffer = await new Promise<Uint8Array>((resolve, reject) => {
-        const worker = new JsonWorker();
-        worker.onmessage = (e) => {
-          if (e.data.error) {
-            reject(new Error(e.data.error));
-          } else {
-            resolve(e.data.buffer);
-          }
-          worker.terminate();
-        };
-        worker.onerror = (e) => {
-          reject(e);
-          worker.terminate();
-        };
-        worker.postMessage(processedData);
-      });
+      const buffer = await serializeJson(processedData);
 
       await db.registerFileBuffer('cloud_response.json', buffer);
       
