@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { initDuckDB, ingestCSV, query, registerFile } from '../services/duckdb';
+import { generateExport } from '../services/exportService';
 import JsonWorker from '../workers/jsonSerializer?worker';
 import { useMascotStore } from './mascotStore';
 import { useErrorStore } from './errorStore';
@@ -81,6 +82,7 @@ interface DataStore {
   checkDuplicates: () => Promise<void>;
   mergeDuplicates: () => Promise<void>;
   restoreSession: () => Promise<boolean>;
+  exportDiff: (comparisonName: string) => Promise<void>;
 }
 
 const classifyError = (e: any): string => {
@@ -311,23 +313,33 @@ export const useDataStore = create<DataStore>((set, get) => ({
          return;
        }
 
-       const addedRes = await query(`SELECT * FROM comparison_dataset EXCEPT SELECT * FROM current_dataset`);
-       const removedRes = await query(`SELECT * FROM current_dataset EXCEPT SELECT * FROM comparison_dataset`);
+       const [addedCountRes, removedCountRes] = await Promise.all([
+          query(`SELECT count(*) as cnt FROM (SELECT * FROM comparison_dataset EXCEPT SELECT * FROM current_dataset)`),
+          query(`SELECT count(*) as cnt FROM (SELECT * FROM current_dataset EXCEPT SELECT * FROM comparison_dataset)`)
+       ]);
+
+       const added = Number(addedCountRes[0]?.cnt || 0);
+       const removed = Number(removedCountRes[0]?.cnt || 0);
+
+       const [rowsAdded, rowsRemoved] = await Promise.all([
+          query(`SELECT * FROM comparison_dataset EXCEPT SELECT * FROM current_dataset LIMIT 100`),
+          query(`SELECT * FROM current_dataset EXCEPT SELECT * FROM comparison_dataset LIMIT 100`)
+       ]);
  
        set({
          diffReport: {
-           added: addedRes.length,
-           removed: removedRes.length,
-           rowsAdded: addedRes,
-           rowsRemoved: removedRes
+           added,
+           removed,
+           rowsAdded,
+           rowsRemoved
          },
          isLoading: false
        });
  
-       if (addedRes.length === 0 && removedRes.length === 0) {
+       if (added === 0 && removed === 0) {
          mascot.setMascot(MASCOT_STATES.SLEEPING, "Analyse terminée : Fichiers strictement identiques.");
        } else {
-         mascot.setMascot(MASCOT_STATES.DETECTIVE, `Différence trouvée : +${addedRes.length} / -${removedRes.length}`);
+         mascot.setMascot(MASCOT_STATES.DETECTIVE, `Différence trouvée : +${added} / -${removed}`);
        }
  
      } catch (e) {
@@ -701,6 +713,42 @@ export const useDataStore = create<DataStore>((set, get) => ({
     } catch (e) {
       useErrorStore.getState().reportError(classifyError(e), e);
       set({ isLoading: false });
+    }
+  },
+
+  exportDiff: async (comparisonName: string) => {
+    const state = get();
+    if (!state.diffReport) return;
+
+    set({ isLoading: true });
+    try {
+       const { conn } = await initDuckDB();
+       if (!conn) throw new Error("DB not ready");
+
+       await conn.query(`CREATE OR REPLACE VIEW diff_export_view AS
+          SELECT *, 'ADDED (V2)' as "_DIFF_STATUS" FROM (SELECT * FROM comparison_dataset EXCEPT SELECT * FROM current_dataset)
+          UNION ALL
+          SELECT *, 'REMOVED (V1)' as "_DIFF_STATUS" FROM (SELECT * FROM current_dataset EXCEPT SELECT * FROM comparison_dataset)
+       `);
+
+       const columns = [...state.columns, { name: '_DIFF_STATUS', type: 'VARCHAR' }];
+
+       await generateExport(null, columns, {
+          filename: `diff_report_${state.fileMeta?.name}_vs_${comparisonName}`,
+          format: 'csv',
+          encoding: 'utf-8',
+          delimiter: ',',
+          includeHeaders: true,
+          tableName: 'diff_export_view'
+       });
+
+       await conn.query(`DROP VIEW IF EXISTS diff_export_view`);
+       set({ isLoading: false });
+
+    } catch (e) {
+       const code = classifyError(e);
+       useErrorStore.getState().reportError(code, e);
+       set({ isLoading: false });
     }
   }
 }));
