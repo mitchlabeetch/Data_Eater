@@ -3,6 +3,7 @@ import duckdb_wasm from '@duckdb/duckdb-wasm/dist/duckdb-mvp.wasm?url';
 import mvp_worker from '@duckdb/duckdb-wasm/dist/duckdb-browser-mvp.worker.js?url';
 import duckdb_eh from '@duckdb/duckdb-wasm/dist/duckdb-eh.wasm?url';
 import eh_worker from '@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.js?url';
+import ExcelWorker from '../workers/excelWorker?worker';
 import { sniffFile } from '../lib/sniffer';
 
 const MANUAL_BUNDLES: duckdb.DuckDBBundles = {
@@ -82,16 +83,27 @@ export const registerFile = async (file: File): Promise<string> => {
     }
 
     if (isExcel) {
-      const ExcelJS = (await import('exceljs')).default;
-      const workbook = new ExcelJS.Workbook();
       const buffer = await file.arrayBuffer();
-      await workbook.xlsx.load(buffer);
-      const worksheet = workbook.getWorksheet(1); // Load first sheet
       
-      if (!worksheet) throw new Error("Excel file is empty or has no sheets");
+      // Offload processing to worker
+      const csvBuffer = await new Promise<Uint8Array>((resolve, reject) => {
+          const worker = new ExcelWorker();
+          worker.onmessage = (e) => {
+              if (e.data.error) {
+                  reject(new Error(e.data.error));
+              } else {
+                  resolve(e.data.buffer);
+              }
+              worker.terminate();
+          };
+          worker.onerror = (e) => {
+              reject(e);
+              worker.terminate();
+          };
+          // Transfer buffer ownership to worker
+          worker.postMessage({ buffer }, [buffer]);
+      });
 
-      // Use ExcelJS native buffer write (much more memory efficient)
-      const csvBuffer = await workbook.csv.writeBuffer();
       const blob = new Blob([csvBuffer], { type: 'text/csv' });
       
       const tempName = `converted_${file.name.replace(/\s/g, '_')}.csv`;
