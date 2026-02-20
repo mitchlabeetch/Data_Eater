@@ -23,6 +23,9 @@ self.onmessage = (e: MessageEvent<string[]>) => {
     // Sort by length descending to use longer strings as cluster centers
     const sortedValues = [...limitedValues].sort((a, b) => b.length - a.length);
 
+    // Pre-calculate prepared targets to avoid redundant processing in the loop
+    const preparedTargets = sortedValues.map(v => fuzzysort.prepare(v));
+
     const clusters: Array<{ center: string, candidates: string[] }> = [];
     const used = new Set<string>();
 
@@ -33,7 +36,7 @@ self.onmessage = (e: MessageEvent<string[]>) => {
       // Example: Length 5 -> 0.90, Length 20 -> 0.75, Min 0.6
       const dynamicThreshold = Math.max(MIN_THRESHOLD, BASE_THRESHOLD - (val.length * LENGTH_PENALTY));
 
-      const fuzzyResults = fuzzysort.go(val, sortedValues, { threshold: dynamicThreshold });
+      const fuzzyResults = fuzzysort.go(val, preparedTargets, { threshold: dynamicThreshold });
 
       const candidates = fuzzyResults
         .filter(result => {
