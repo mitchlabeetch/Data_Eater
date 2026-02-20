@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { initDuckDB, ingestCSV, query, registerFile } from '../services/duckdb';
+import { generateExport } from '../services/exportService';
 import JsonWorker from '../workers/jsonSerializer?worker';
 import { useMascotStore } from './mascotStore';
 import { useErrorStore } from './errorStore';
@@ -55,6 +56,7 @@ interface DataStore {
     removed: number;
     rowsAdded: any[];
     rowsRemoved: any[];
+    comparisonFileName?: string;
     schemaMismatch?: {
       columnsInV1Only: string[];
       columnsInV2Only: string[];
@@ -71,6 +73,7 @@ interface DataStore {
   queryResult: (sql: string) => Promise<any[]>;
   rawQuery: (sql: string) => Promise<any[]>;
   clearDiff: () => void;
+  exportDiff: () => Promise<void>;
   prepareForCloud: (hiddenCols: string[]) => Promise<any[]>;
   reconcileCloud: (processedData: any[]) => Promise<void>;
   setSearchQuery: (query: string) => Promise<void>;
@@ -311,23 +314,35 @@ export const useDataStore = create<DataStore>((set, get) => ({
          return;
        }
 
-       const addedRes = await query(`SELECT * FROM comparison_dataset EXCEPT SELECT * FROM current_dataset`);
-       const removedRes = await query(`SELECT * FROM current_dataset EXCEPT SELECT * FROM comparison_dataset`);
+       // Optimized: Get counts first, then preview only
+       const [addedCountRes, removedCountRes] = await Promise.all([
+         query(`SELECT count(*) as cnt FROM (SELECT * FROM comparison_dataset EXCEPT SELECT * FROM current_dataset)`),
+         query(`SELECT count(*) as cnt FROM (SELECT * FROM current_dataset EXCEPT SELECT * FROM comparison_dataset)`)
+       ]);
+
+       const addedCount = Number(addedCountRes[0]?.cnt || 0);
+       const removedCount = Number(removedCountRes[0]?.cnt || 0);
+
+       const [addedPreview, removedPreview] = await Promise.all([
+         query(`SELECT * FROM comparison_dataset EXCEPT SELECT * FROM current_dataset LIMIT 100`),
+         query(`SELECT * FROM current_dataset EXCEPT SELECT * FROM comparison_dataset LIMIT 100`)
+       ]);
  
        set({
          diffReport: {
-           added: addedRes.length,
-           removed: removedRes.length,
-           rowsAdded: addedRes,
-           rowsRemoved: removedRes
+           added: addedCount,
+           removed: removedCount,
+           rowsAdded: addedPreview,
+           rowsRemoved: removedPreview,
+           comparisonFileName: file.name
          },
          isLoading: false
        });
  
-       if (addedRes.length === 0 && removedRes.length === 0) {
+       if (addedCount === 0 && removedCount === 0) {
          mascot.setMascot(MASCOT_STATES.SLEEPING, "Analyse terminée : Fichiers strictement identiques.");
        } else {
-         mascot.setMascot(MASCOT_STATES.DETECTIVE, `Différence trouvée : +${addedRes.length} / -${removedRes.length}`);
+         mascot.setMascot(MASCOT_STATES.DETECTIVE, `Différence trouvée : +${addedCount} / -${removedCount}`);
        }
  
      } catch (e) {
@@ -338,6 +353,47 @@ export const useDataStore = create<DataStore>((set, get) => ({
   },
 
   clearDiff: () => set({ diffReport: null }),
+
+  exportDiff: async () => {
+    const mascot = useMascotStore.getState();
+    const state = get();
+    if (!state.diffReport) return;
+
+    set({ isLoading: true });
+    mascot.setMascot(MASCOT_STATES.EATING, "Préparation de l'export des différences...");
+
+    try {
+      await query(`DROP TABLE IF EXISTS diff_export_temp`);
+
+      // Create a temporary table combining both sets of differences with a status column
+      await query(`CREATE TABLE diff_export_temp AS
+        SELECT *, 'ADDED (V2)' AS "_DIFF_STATUS" FROM (SELECT * FROM comparison_dataset EXCEPT SELECT * FROM current_dataset)
+        UNION ALL
+        SELECT *, 'REMOVED (V1)' AS "_DIFF_STATUS" FROM (SELECT * FROM current_dataset EXCEPT SELECT * FROM comparison_dataset)
+      `);
+
+      const schema = await query(`PRAGMA table_info('diff_export_temp')`);
+      const columns = schema.map((c: any) => ({ name: c.name }));
+
+      await generateExport(null, columns, {
+        filename: `diff_report_${state.fileMeta?.name}_vs_${state.diffReport.comparisonFileName || 'comparison'}`,
+        format: 'csv',
+        encoding: 'utf-8',
+        delimiter: ',',
+        includeHeaders: true,
+        tableName: 'diff_export_temp'
+      });
+
+      await query(`DROP TABLE IF EXISTS diff_export_temp`);
+
+      mascot.setMascot(MASCOT_STATES.SLEEPING, "Export terminé !");
+    } catch (e) {
+      const code = classifyError(e);
+      useErrorStore.getState().reportError(code, e);
+    } finally {
+      set({ isLoading: false });
+    }
+  },
 
   runQuery: async (sql: string) => {
     set({ isLoading: true });

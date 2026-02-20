@@ -3,7 +3,6 @@ import { useDataStore } from '../stores/dataStore';
 import { useDropzone } from 'react-dropzone';
 import { X, ArrowRightLeft, FileText, Upload, CheckCircle, AlertTriangle, Download } from 'lucide-react';
 import clsx from 'clsx';
-import { generateExport } from '../services/exportService';
 
 interface DiffModalProps {
   isOpen: boolean;
@@ -11,7 +10,7 @@ interface DiffModalProps {
 }
 
 const DiffModal: React.FC<DiffModalProps> = ({ isOpen, onClose }) => {
-  const { fileMeta, loadComparisonFile, diffReport, isLoading, clearDiff } = useDataStore();
+  const { fileMeta, loadComparisonFile, diffReport, isLoading, clearDiff, exportDiff } = useDataStore();
   const [comparisonFile, setComparisonFile] = useState<File | null>(null);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
@@ -38,24 +37,7 @@ const DiffModal: React.FC<DiffModalProps> = ({ isOpen, onClose }) => {
   };
 
   const handleExportDiff = async () => {
-    if (!diffReport) return;
-    
-    // Prepare Diff Data for Export
-    // Structure: Status | Row Data...
-    const addedRows = diffReport.rowsAdded.map(r => ({ ...r, _DIFF_STATUS: 'ADDED (V2)' }));
-    const removedRows = diffReport.rowsRemoved.map(r => ({ ...r, _DIFF_STATUS: 'REMOVED (V1)' }));
-    const combined = [...addedRows, ...removedRows];
-    
-    // Get columns from first row (assuming schema match)
-    const cols = Object.keys(combined[0] || {}).map(k => ({ name: k }));
-
-    await generateExport(combined, cols, {
-      filename: `diff_report_${fileMeta?.name}_vs_${comparisonFile?.name}`,
-      format: 'csv',
-      encoding: 'utf-8',
-      delimiter: ',',
-      includeHeaders: true
-    });
+    await exportDiff();
   };
 
   if (!isOpen) return null;
