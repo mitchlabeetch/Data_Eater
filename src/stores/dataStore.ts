@@ -139,12 +139,12 @@ export const useDataStore = create<DataStore>((set, get) => ({
       if (state.searchQuery.trim()) {
         const q = state.searchQuery.replace(/'/g, "''");
         const relevantCols = getRelevantColumns(state.columns, state.searchQuery);
-        const conditions = relevantCols
-          .map(col => `CAST("${col.name}" AS VARCHAR) ILIKE '%${q}%'`)
-          .join(' OR ');
 
-        if (conditions.length > 0) {
-          clauses.push(`(${conditions})`);
+        if (relevantCols.length > 0) {
+          const args = relevantCols
+            .map(col => `CAST("${col.name}" AS VARCHAR)`)
+            .join(', ');
+          clauses.push(`(concat_ws(' ', ${args}) ILIKE '%${q}%')`);
         } else {
           clauses.push(`(1=0)`);
         }
