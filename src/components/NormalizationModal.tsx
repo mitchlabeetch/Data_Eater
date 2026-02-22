@@ -81,7 +81,7 @@ const TabButton: React.FC<{ id: string, label: string, icon: React.ReactNode, ac
 );
 
 const TimezonePanel: React.FC = () => {
-  const { columns, selectedColumn, executeMutation, queryResult, rowCount } = useDataStore();
+  const { columns, selectedColumn, executeMutation, queryResult, rawQuery, rowCount } = useDataStore();
   const [targetCol, setTargetCol] = useState(selectedColumn || '');
   const [geoCol, setGeoCol] = useState('');
   const [overwrite, setOverwrite] = useState(false);
@@ -147,11 +147,12 @@ const TimezonePanel: React.FC = () => {
 
       const colName = overwrite ? `"${targetCol}"` : `"${targetCol}_grasse"`;
       if (!overwrite) {
-         await executeMutation(`ALTER TABLE current_dataset ADD COLUMN IF NOT EXISTS ${colName} VARCHAR`);
+         await rawQuery(`ALTER TABLE current_dataset ADD COLUMN IF NOT EXISTS ${colName} VARCHAR`);
       }
       
-      await executeMutation(`ALTER TABLE current_dataset ADD COLUMN IF NOT EXISTS _temp_id INTEGER`);
-      await executeMutation(`UPDATE current_dataset SET _temp_id = rowid`);
+      await rawQuery(`ALTER TABLE current_dataset ADD COLUMN IF NOT EXISTS _temp_id INTEGER`);
+      await rawQuery(`UPDATE current_dataset SET _temp_id = rowid`);
+      await rawQuery(`CREATE OR REPLACE TEMP TABLE _tz_updates (id INTEGER, val VARCHAR)`);
 
       const BATCH_SIZE = 50000;
       const totalBatches = Math.ceil(rowCount / BATCH_SIZE);
@@ -189,19 +190,22 @@ const TimezonePanel: React.FC = () => {
           const SQL_CHUNK_SIZE = 1000;
           for (let i = 0; i < valuesToUpdate.length; i += SQL_CHUNK_SIZE) {
              const chunk = valuesToUpdate.slice(i, i + SQL_CHUNK_SIZE).join(',');
-             await executeMutation(`
-               UPDATE current_dataset 
-               SET ${colName} = v.val 
-               FROM (VALUES ${chunk}) as v(id, val) 
-               WHERE current_dataset._temp_id = v.id
-             `);
+             await rawQuery(`INSERT INTO _tz_updates VALUES ${chunk}`);
           }
         }
 
         setProgress(Math.round(((batchIdx + 1) / totalBatches) * 100));
       }
 
-      await executeMutation(`ALTER TABLE current_dataset DROP COLUMN _temp_id`);
+      await rawQuery(`
+        UPDATE current_dataset
+        SET ${colName} = t.val
+        FROM _tz_updates t
+        WHERE current_dataset._temp_id = t.id
+      `);
+
+      await rawQuery(`DROP TABLE _tz_updates`);
+      await executeMutation(`ALTER TABLE current_dataset DROP COLUMN _temp_id`, "Normalisation Timezones");
       setIsProcessing(false);
       setStep('config'); 
 
@@ -330,7 +334,7 @@ const TimezonePanel: React.FC = () => {
 };
 
 const GeoPanel: React.FC = () => {
-  const { columns, selectedColumn, queryResult, executeMutation, rowCount } = useDataStore();
+  const { columns, selectedColumn, queryResult, executeMutation, rawQuery, rowCount } = useDataStore();
   const [targetCol, setTargetCol] = useState(selectedColumn || '');
   const [outputFormat, setOutputFormat] = useState<'full' | 'city' | 'gps'>('full');
   const [mode, setMode] = useState<'auto' | 'manual'>('auto');
@@ -352,9 +356,10 @@ const GeoPanel: React.FC = () => {
 
       const newCol = `"${targetCol}_geo"`;
       
-      await executeMutation(`ALTER TABLE current_dataset ADD COLUMN IF NOT EXISTS ${newCol} VARCHAR`);
-      await executeMutation(`ALTER TABLE current_dataset ADD COLUMN IF NOT EXISTS _temp_id INTEGER`);
-      await executeMutation(`UPDATE current_dataset SET _temp_id = rowid`);
+      await rawQuery(`ALTER TABLE current_dataset ADD COLUMN IF NOT EXISTS ${newCol} VARCHAR`);
+      await rawQuery(`ALTER TABLE current_dataset ADD COLUMN IF NOT EXISTS _temp_id INTEGER`);
+      await rawQuery(`UPDATE current_dataset SET _temp_id = rowid`);
+      await rawQuery(`CREATE OR REPLACE TEMP TABLE _geo_updates (id INTEGER, val VARCHAR)`);
 
       const BATCH_SIZE = 50000;
       const totalBatches = Math.ceil(rowCount / BATCH_SIZE);
@@ -385,20 +390,23 @@ const GeoPanel: React.FC = () => {
         });
 
         if (batchUpdates.length > 0) {
-          const SQL_CHUNK_SIZE = 500; 
+          const SQL_CHUNK_SIZE = 1000;
           for (let i = 0; i < batchUpdates.length; i += SQL_CHUNK_SIZE) {
              const chunk = batchUpdates.slice(i, i + SQL_CHUNK_SIZE).join(',');
-             await executeMutation(`
-               UPDATE current_dataset 
-               SET ${newCol} = v.val 
-               FROM (VALUES ${chunk}) as v(id, val) 
-               WHERE current_dataset._temp_id = v.id
-             `);
+             await rawQuery(`INSERT INTO _geo_updates VALUES ${chunk}`);
           }
         }
       }
 
-      await executeMutation(`ALTER TABLE current_dataset DROP COLUMN _temp_id`);
+      await rawQuery(`
+        UPDATE current_dataset
+        SET ${newCol} = t.val
+        FROM _geo_updates t
+        WHERE current_dataset._temp_id = t.id
+      `);
+
+      await rawQuery(`DROP TABLE _geo_updates`);
+      await executeMutation(`ALTER TABLE current_dataset DROP COLUMN _temp_id`, "Consolidation Géographique");
       setIsProcessing(false);
 
     } catch (e) {
