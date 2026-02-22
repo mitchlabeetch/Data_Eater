@@ -182,4 +182,20 @@ export const ingestCSV = async (file: File) => {
             type: col.type
         }))
     };
+
+  /**
+   * Stream query results as async iterable (for large exports)
+   * OPTIMIZATION: Avoids loading entire result set into memory
+   */
+  async *streamQuery(sql: string, batchSize: number = 1000) {
+    const result = await this.connection.query(sql);
+    const totalRows = result.numRows;
+    
+    for (let i = 0; i < totalRows; i += batchSize) {
+      const batch = await result.slice(i, Math.min(i + batchSize, totalRows));
+      for (let j = 0; j < batch.numRows; j++) {
+        yield batch.get(j);
+      }
+    }
+  }
 };
