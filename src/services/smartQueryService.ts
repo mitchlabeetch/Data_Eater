@@ -18,13 +18,7 @@ export const processBatch = async (
   }
 
   if (!API_KEY) {
-    // Mock Implementation if no key
-    console.warn("No API Key found for Cloud LLM. Simulating response.");
-    await new Promise(r => setTimeout(r, 1000));
-    return safeBatch.map(row => ({
-      ...row,
-      _llm_comment: `Processed (Simulation): ${query}`
-    }));
+    throw new Error("Clé API manquante. Veuillez configurer VITE_CLOUD_LLM_API_KEY.");
   }
 
   try {

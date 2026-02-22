@@ -51,7 +51,8 @@ const SmartQueryModal: React.FC<SmartQueryModalProps> = ({ isOpen, onClose }) =>
 
     } catch (e) {
       console.error(e);
-      setMascot(MASCOT_STATES.INDIGESTION, "Erreur lors de l'appel à l'IA.");
+      const errorMessage = e instanceof Error ? e.message : "Erreur lors de l'appel à l'IA.";
+      setMascot(MASCOT_STATES.INDIGESTION, errorMessage);
       setIsProcessing(false);
     }
   };
