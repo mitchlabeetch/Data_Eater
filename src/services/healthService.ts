@@ -117,17 +117,27 @@ export const analyzeHealth = async (columns: { name: string; type: string }[], f
     // Pattern Matching (Heuristic)
     let detectedPattern: string | undefined;
     if (colType === 'VARCHAR') {
-      const values = sampleRows
-        .map(row => row[col.name])
-        .filter(v => v !== null && v !== undefined)
-        .slice(0, 100)
-        .map(String);
+      // Optimized: Single pass collection, lazy pattern check
+      const values: string[] = [];
+      for (const row of sampleRows) {
+        const v = row[col.name];
+        if (v !== null && v !== undefined) {
+          values.push(String(v));
+          if (values.length === 100) break;
+        }
+      }
       
-      for (const [key, regex] of Object.entries(PATTERNS)) {
-        const matchCount = values.filter(v => regex.test(v)).length;
-        if (values.length > 0 && matchCount > values.length * 0.7) { // 70% match in sample
-          detectedPattern = key;
-          break;
+      if (values.length > 0) {
+        const threshold = values.length * 0.7;
+        for (const [key, regex] of Object.entries(PATTERNS)) {
+          let matchCount = 0;
+          for (const val of values) {
+            if (regex.test(val)) matchCount++;
+          }
+          if (matchCount > threshold) { // 70% match in sample
+            detectedPattern = key;
+            break;
+          }
         }
       }
     }
