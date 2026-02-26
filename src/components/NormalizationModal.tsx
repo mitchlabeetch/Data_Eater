@@ -2,9 +2,7 @@ import React, { useState } from 'react';
 import { useDataStore } from '../stores/dataStore';
 import { X, Clock, MapPin, GitMerge, Check, ArrowRight } from 'lucide-react';
 import clsx from 'clsx';
-import cityTimezones from 'city-timezones';
 import { DateTime } from 'luxon';
-import fuzzysort from 'fuzzysort';
 import { batchGeocode } from '../services/geoService';
 
 interface NormalizationModalProps {
@@ -94,6 +92,18 @@ const TimezonePanel: React.FC = () => {
   const [unresolved, setUnresolved] = useState<string[]>([]);
   const [manualMap, setManualMap] = useState<Record<string, string>>({});
 
+  const workerRef = React.useRef<Worker | null>(null);
+
+  // Cleanup worker on unmount
+  React.useEffect(() => {
+    return () => {
+      if (workerRef.current) {
+        workerRef.current.terminate();
+        workerRef.current = null;
+      }
+    };
+  }, []);
+
   const availableTimezones = React.useMemo(() => {
     try {
       return (Intl as any).supportedValuesOf('timeZone');
@@ -106,34 +116,43 @@ const TimezonePanel: React.FC = () => {
     if (!targetCol || !geoCol) return;
     setIsProcessing(true);
 
-    const res = await queryResult(`SELECT DISTINCT "${geoCol}" as loc FROM current_dataset`);
-    const distinctLocs = res.map((r: any) => String(r.loc || '')).filter(Boolean);
-    
-    const newMappings = new Map<string, string>();
-    const newUnresolved: string[] = [];
+    try {
+      const res = await queryResult(`SELECT DISTINCT "${geoCol}" as loc FROM current_dataset`);
+      const distinctLocs = res.map((r: any) => String(r.loc || '')).filter(Boolean);
 
-    const cityIndex = cityTimezones.cityMapping.map(c => ({ name: c.city, tz: c.timezone }));
-
-    distinctLocs.forEach(loc => {
-      let matches = cityTimezones.findFromCityStateProvince(loc);
-      if (matches.length > 0) {
-        newMappings.set(loc, matches[0].timezone);
-        return;
+      if (workerRef.current) {
+        workerRef.current.terminate();
       }
 
-      const fuzzyResult = fuzzysort.go(loc, cityIndex, { key: 'name', limit: 1 });
-      if (fuzzyResult.length > 0 && fuzzyResult[0].score > -1000) { 
-         newMappings.set(loc, fuzzyResult[0].obj.tz);
-         return;
-      }
-      
-      newUnresolved.push(loc);
-    });
+      const worker = new Worker(new URL('../workers/timezoneWorker.ts', import.meta.url), { type: 'module' });
+      workerRef.current = worker;
 
-    setMappings(newMappings);
-    setUnresolved(newUnresolved.slice(0, 20)); 
-    setStep('review');
-    setIsProcessing(false);
+      worker.onmessage = (e) => {
+        if (e.data.error) {
+          console.error("Worker Error:", e.data.error);
+        } else {
+          const { mappings: mappingEntries, unresolved: newUnresolved } = e.data;
+          setMappings(new Map(mappingEntries));
+          setUnresolved(newUnresolved.slice(0, 20));
+          setStep('review');
+        }
+        setIsProcessing(false);
+        worker.terminate();
+        workerRef.current = null;
+      };
+
+      worker.onerror = (e) => {
+        console.error("Worker Error Event:", e);
+        setIsProcessing(false);
+        worker.terminate();
+        workerRef.current = null;
+      };
+
+      worker.postMessage(distinctLocs);
+    } catch (e) {
+      console.error(e);
+      setIsProcessing(false);
+    }
   };
 
   const handleExecute = async () => {
