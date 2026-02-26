@@ -185,11 +185,37 @@ export const detectJaggedRows = async (file: File, delimiter?: string, encoding:
         const getColCount = (line: string) => {
            let count = 1;
            let inQuote = false;
-           for (let i = 0; i < line.length; i++) {
-               if (line[i] === '"') {
-                   inQuote = !inQuote;
-               } else if (line[i] === safeDelimiter && !inQuote) {
-                   count++;
+           let i = 0;
+           const len = line.length;
+
+           while (i < len) {
+               if (inQuote) {
+                   const nextQuote = line.indexOf('"', i);
+                   if (nextQuote === -1) {
+                        // Unclosed quote, rest is quoted. No more delimiters counted.
+                        break;
+                   }
+                   inQuote = false;
+                   i = nextQuote + 1;
+               } else {
+                   // Optimization: Find delimiter first
+                   const nextDelim = line.indexOf(safeDelimiter, i);
+                   if (nextDelim === -1) {
+                        // No more delimiters in the rest of the string.
+                        break;
+                   }
+
+                   const nextQuote = line.indexOf('"', i);
+
+                   if (nextQuote === -1 || nextDelim < nextQuote) {
+                       // Delimiter is real
+                       count++;
+                       i = nextDelim + 1;
+                   } else {
+                       // Quote is first
+                       inQuote = true;
+                       i = nextQuote + 1;
+                   }
                }
            }
            return count;
