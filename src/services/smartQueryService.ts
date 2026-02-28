@@ -94,37 +94,38 @@ export const processBatch = async (
 export const runSmartQuery = async (
   userQuery: string,
   fullData: any[],
-  onProgress: (p: number) => void
+  onProgress: (p: number) => void,
+  batchProcessor: (query: string, data: any[], instructions: string) => Promise<any[]> = processBatch
 ): Promise<any[]> => {
   const CHUNK_SIZE = 500;
   const totalChunks = Math.ceil(fullData.length / CHUNK_SIZE);
   const allResults: any[][] = new Array(totalChunks);
   const CONCURRENCY_LIMIT = 5;
-  const executing = new Set<Promise<void>>();
 
   let completedChunks = 0;
+  let nextChunkIndex = 0;
 
-  for (let i = 0; i < totalChunks; i++) {
-    const chunk = fullData.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
-    
-    const p = processBatch(userQuery, chunk, "").then((result) => {
+  const worker = async () => {
+    while (true) {
+      const i = nextChunkIndex++;
+      if (i >= totalChunks) break;
+
+      const chunk = fullData.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+      const result = await batchProcessor(userQuery, chunk, "");
+
       allResults[i] = result;
       completedChunks++;
       onProgress(Math.round((completedChunks / totalChunks) * 100));
-    });
-
-    const wrapper = p.then(() => {
-      executing.delete(wrapper);
-    });
-
-    executing.add(wrapper);
-
-    if (executing.size >= CONCURRENCY_LIMIT) {
-      await Promise.race(executing);
     }
+  };
+
+  const workers = [];
+  const activeWorkers = Math.min(CONCURRENCY_LIMIT, totalChunks);
+  for (let i = 0; i < activeWorkers; i++) {
+    workers.push(worker());
   }
 
-  await Promise.all(executing);
+  await Promise.all(workers);
 
   // Flatten results securely
   const processedData: any[] = [];
