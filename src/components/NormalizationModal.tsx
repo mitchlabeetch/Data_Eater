@@ -560,9 +560,26 @@ const FuzzyPanel: React.FC = () => {
         return { target, sources: [center, ...(cluster?.candidates || [])] };
       });
 
-      for (const update of updates) {
-        const sourcesSQL = update.sources.map(s => `'${s.replace(/'/g, "''")}'`).join(', ');
-        await executeMutation(`UPDATE current_dataset SET "${targetCol}" = '${update.target.replace(/'/g, "''")}' WHERE "${targetCol}" IN (${sourcesSQL})`);
+      const pairs: string[] = [];
+      updates.forEach(update => {
+        const targetSafe = update.target.replace(/'/g, "''");
+        update.sources.forEach(source => {
+           const sourceSafe = source.replace(/'/g, "''");
+           pairs.push(`('${sourceSafe}', '${targetSafe}')`);
+        });
+      });
+
+      if (pairs.length > 0) {
+        const CHUNK_SIZE = 1000;
+        for (let i = 0; i < pairs.length; i += CHUNK_SIZE) {
+           const chunk = pairs.slice(i, i + CHUNK_SIZE).join(',');
+           await executeMutation(`
+             UPDATE current_dataset
+             SET "${targetCol}" = v.tgt
+             FROM (VALUES ${chunk}) as v(src, tgt)
+             WHERE "${targetCol}" = v.src
+           `);
+        }
       }
       
       setIsAnalyzing(false);
